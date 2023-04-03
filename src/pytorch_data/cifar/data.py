@@ -542,6 +542,9 @@ class CIFAR100Data(pl.LightningDataModule):
     self.hparams = args
     self.mean = (0.4914, 0.4822, 0.4465)
     self.std = (0.2023, 0.1994, 0.2010)
+    # hack to debug augmentation:
+    self.train_aug = self.hparams.get('train_aug', True)
+
     ## if softmax targets are given, parse.
     if args.get("custom_targets_train", False):
       # self.set_targets_train = parse_softmax(args.softmax_targets_train)
@@ -559,7 +562,7 @@ class CIFAR100Data(pl.LightningDataModule):
     added optional aug parameter to apply augmentation or not.
 
     """
-    if aug is True:
+    if (aug is True) and (self.train_aug is True):
       transform = T.Compose(
         [
           T.RandomCrop(32, padding=4),
