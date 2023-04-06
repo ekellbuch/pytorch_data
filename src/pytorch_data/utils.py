@@ -2,9 +2,13 @@ import torch
 from tqdm import tqdm
 import numpy as np
 
-def count_classes(data, num_classes=10):
+def count_classes(data, num_classes=10, loader='train'):
+  loaders = {
+    'train' : data.train_dataloader(),
+     'val': data.val_dataloader(),
+  }
   labels = torch.zeros(num_classes, dtype=torch.long)
-  for idx, batch in tqdm(enumerate(data.train_dataloader(shuffle=False, aug=False))):
+  for idx, batch in tqdm(enumerate(loaders[loader])):
     labels += torch.bincount(batch[1], minlength=num_classes)
   return labels
 

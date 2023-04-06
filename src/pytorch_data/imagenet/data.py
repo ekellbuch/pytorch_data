@@ -8,6 +8,11 @@ import pytorch_lightning as pl
 from torchvision.datasets import ImageFolder
 from typing import Any, Callable, Optional
 
+__all__lp = [
+    "ImageNetData",
+    "ImageNetDataIndexed"
+
+]
 
 class ImageNetData(pl.LightningDataModule):
   def __init__(self, args):
@@ -21,7 +26,7 @@ class ImageNetData(pl.LightningDataModule):
   def train_dataloader(self):
     loader_transforms = self.train_transform()
 
-    train_dir = os.path.join(self.hparams.data_dir, "train")
+    train_dir = os.path.join(self.hparams.data_dir, "imagenet/train")
     train_dataset = ImageFolder(
       train_dir,
       loader_transforms,
@@ -31,7 +36,7 @@ class ImageNetData(pl.LightningDataModule):
       dataset=train_dataset,
       batch_size=self.hparams.batch_size,
       shuffle=self.train_shuffle,
-      num_workers=self.hparams.workers
+      num_workers=self.hparams.num_workers
     )
 
     return train_loader
@@ -39,7 +44,7 @@ class ImageNetData(pl.LightningDataModule):
   def val_dataloader(self):
     loader_transforms = self.val_transform()
 
-    val_dir = os.path.join(self.hparams.data_dir, "val")
+    val_dir = os.path.join(self.hparams.data_dir, "imagenet/val")
 
     val_loader = torch.utils.data.DataLoader(
       ImageFolder(
@@ -48,7 +53,7 @@ class ImageNetData(pl.LightningDataModule):
       ),
       batch_size=self.hparams.batch_size,
       shuffle=False,
-      num_workers=self.hparams.workers,
+      num_workers=self.hparams.num_workers,
     )
     return val_loader
 
@@ -90,7 +95,6 @@ class ImageNetData(pl.LightningDataModule):
 class ImageNetDataIndexed(ImageNetData):
   def __init__(self, args):
     super().__init__(args)
-    #self.hparams = args
 
   def train_dataloader(self):
     loader_transforms = self.train_transform()
@@ -105,7 +109,7 @@ class ImageNetDataIndexed(ImageNetData):
       dataset=train_dataset,
       batch_size=self.hparams.batch_size,
       shuffle=self.train_shuffle,
-      num_workers=self.hparams.workers
+      num_workers=self.hparams.num_workers
     )
 
     return train_loader
@@ -122,7 +126,7 @@ class ImageNetDataIndexed(ImageNetData):
       ),
       batch_size=self.hparams.batch_size,
       shuffle=False,
-      num_workers=self.hparams.workers,
+      num_workers=self.hparams.num_workers,
     )
     return val_loader
 

@@ -6,6 +6,10 @@ import torch
 from torchvision.transforms import ToTensor
 from torchvision.datasets import MNIST
 
+__all__lp = [
+    "MNISTModule",
+]
+
 
 class OneHotTransform():
   def __init__(self, num_classes):
@@ -19,10 +23,15 @@ class MNISTModule(pl.LightningDataModule):
   def __init__(self, args):
     super().__init__()
     self.hparams = args
-    self.mnist_predict = MNIST(self.hparams.data_dir, train=False, transform=ToTensor(),
-                               target_transform=OneHotTransform(num_classes=10), download=True)
-    self.mnist_train = MNIST(self.hparams.data_dir, train=True, transform=ToTensor(),
-                             target_transform=OneHotTransform(num_classes=10), download=True)
+    self.mnist_predict = MNIST(self.hparams.data_dir,
+                               train=False, transform=ToTensor(),
+                               target_transform=OneHotTransform(num_classes=10),
+                               download=True)
+    self.mnist_train = MNIST(self.hparams.data_dir,
+                             train=True,
+                             transform=ToTensor(),
+                             target_transform=OneHotTransform(num_classes=10),
+                             download=True)
 
   def train_dataloader(self, shuffle=False, aug=False):
     return DataLoader(self.mnist_train,
