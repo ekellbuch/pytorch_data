@@ -31,11 +31,10 @@ class DatasetLoaderTest(parameterized.TestCase):
         cfg.num_workers = 8
         cfg.train_shuffle = False
         return cfg
-    """
     @parameterized.named_parameters(
        ("cifar10", "cifar10", CIFAR10Data, 10),
        ("cifar100","cifar100", CIFAR100Data, 100),
-       #("imagenet", "imagenet", ImageNetData, 1000),
+       ("imagenet", "imagenet", ImageNetData, 1000),
     )
     def test_data_loading(self, dataset_name, dataset_class, num_classes):
 
@@ -43,12 +42,10 @@ class DatasetLoaderTest(parameterized.TestCase):
         ind_data = dataset_class(args)
 
         labels = count_classes(ind_data, num_classes=num_classes, loader='val').sum()
-        self.assertEqual(labels, BASELINE[dataset_name]*num_classes)
-    """
+        self.assertEqual(labels, BASELINE_VAL[dataset_name]*num_classes)
     @parameterized.named_parameters(
         ("imbalancecifar10", "cifar10", IMBALANCECIFAR10Data, 10, "exp", 0.01),
         ("imbalancecifar100", "cifar100", IMBALANCECIFAR100Data, 100, "exp", 0.01),
-        #("imbalancecifar100", "cifar100", IMBALANCECIFAR100Data, 100),
     )
     def test_imb_data_loading(self, dataset_name, dataset_class, num_classes, imb_type, imb_factor):
         args = self.get_cfg()

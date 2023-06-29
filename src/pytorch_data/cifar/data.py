@@ -446,12 +446,13 @@ class CINIC10_Data(pl.LightningDataModule):
 
 class CIFAR10_1Data(pl.LightningDataModule):
 
-    def __init__(self, args, version="v6"):
+    def __init__(self, args):
         super().__init__()
         self.hparams = args  # check these.
         self.mean = (0.4914, 0.4822, 0.4465)
         self.std = (0.2471, 0.2435, 0.2616)
-        self.version = version
+        self.version = args.get("version", "v6")
+
         if args.get("custom_targets_eval_ood", False):
             self.set_targets_eval_ood = np.load(args.custom_targets_eval_ood)
         else:
@@ -551,7 +552,8 @@ class CIFAR10Data(pl.LightningDataModule):
         super().__init__()
         self.hparams = args
         self.mean = (0.4914, 0.4822, 0.4465)
-        self.std = (0.2471, 0.2435, 0.2616)
+        self.std = (0.2023, 0.1994, 0.2010)
+
         # if softmax targets are given, parse.
         if args.get("custom_targets_train", False):
             # self.set_targets_train = parse_softmax(args.softmax_targets_train)
