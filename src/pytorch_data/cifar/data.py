@@ -1,6 +1,5 @@
 import os
 import zipfile
-from abc import ABCMeta
 from typing import Any
 
 from PIL import Image
@@ -8,19 +7,11 @@ import numpy as np
 import pytorch_lightning as pl
 import requests
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 from torchvision import transforms as T
 import torchvision
 from torchvision.datasets import CIFAR10, CIFAR100
 from tqdm import tqdm
-
-# def parse_softmax(path):
-#    """Parse the numpy softmax outputs and convert them to a list of labels
-#
-#    :param path: path to a numpy file containing softmax outputs we can treat as labels.
-#    """
-#    softmax = np.load(path)
-#    return list(np.argmax(np.load(path),axis=1))
 
 
 __all__ = [
@@ -38,6 +29,19 @@ __all__lp = [
      "CIFAR100Data",
      "CIFAR100CoarseData"
 ]
+
+
+# val set sample size per class
+NUM_SAMPLES_TEST = {
+  "cifar10": 1000,
+  "cifar100": 100,
+  "imagenet": 50,
+}
+
+NUM_SAMPLES_TRAIN = {
+  "cifar10": 6000,
+  "cifar100": 500,
+}
 
 
 def stream_download(dataurl, download_path):
@@ -335,10 +339,12 @@ class CIFAR10_1(torchvision.datasets.vision.VisionDataset):
 
         dataurl = os.path.join(root_path, data_name)
         data_destination = os.path.join(self.root, "data.npy")
-        stream_download(dataurl, data_destination)
+        if not os.path.exists(data_destination):
+            stream_download(dataurl, data_destination)
         label_url = os.path.join(root_path, label_name)
         label_destination = os.path.join(self.root, "labels.npy")
-        stream_download(label_url, label_destination)
+        if not os.path.exists(label_destination):
+            stream_download(label_url, label_destination)
         return data_destination, label_destination
 
     def __len__(self):
@@ -363,6 +369,7 @@ class CIFAR10_1(torchvision.datasets.vision.VisionDataset):
         return sample
 
 
+
 class CINIC10_Data(pl.LightningDataModule):
 
     def __init__(self, args):
@@ -370,24 +377,13 @@ class CINIC10_Data(pl.LightningDataModule):
         self.hparams = args
         self.mean = (0.47889522, 0.47227842, 0.43047404)
         self.std = (0.24205776, 0.23828046, 0.25874835)
+
         if args.get("custom_targets_eval_ood", False):
             self.set_targets_eval_ood = np.load(args.custom_targets_eval_ood)
         else:
             self.set_targets_eval_ood = None
 
-    def train_dataloader(self):
-        raise NotImplementedError(
-            "don't know the right transforms for this- will implement later")
-
-    def val_dataloader(self):
-        transform = T.Compose([
-            T.ToTensor(),
-            T.Normalize(self.mean, self.std),
-        ])
-        dataset = CINIC10(root_dir=os.path.join(self.hparams.data_dir,
-                                                "cinic-10"),
-                          split="val",
-                          transform=transform)
+    def check_targets(self, dataset):
         if self.set_targets_eval_ood is not None:
             dataset.targets = self.set_targets_eval_ood
             assert len(dataset.data) == len(
@@ -398,8 +394,31 @@ class CINIC10_Data(pl.LightningDataModule):
                 dataset.targets
             ), "number of classes, {} does not match target index {}".format(
                 dataset.data.shape[1], np.max(dataset.targets))
+        return dataset
+
+    def setup(self, stage=None):
+        transform = T.Compose([
+            T.ToTensor(),
+            T.Normalize(self.mean, self.std),
+        ])
+
+        val_dataset = CINIC10(root_dir=os.path.join(self.hparams.data_dir, "cinic-10"), split="val",
+                              transform=transform)
+        self.val_dataset = self.check_targets(val_dataset)
+
+        test_dataset = CINIC10(root_dir=os.path.join(self.hparams.data_dir, "cinic-10"), split="test",
+                               transform=transform, labels=self.set_targets_eval_ood)
+        self.test_dataset = self.check_targets(test_dataset)
+
+
+    def train_dataloader(self):
+        raise NotImplementedError(
+            "don't know the right transforms for this- will implement later")
+
+
+    def val_dataloader(self):
         dataloader = DataLoader(
-            dataset,
+            self.val_dataset,
             batch_size=self.hparams.batch_size,
             num_workers=self.hparams.num_workers,
             drop_last=False,
@@ -408,34 +427,8 @@ class CINIC10_Data(pl.LightningDataModule):
         return dataloader
 
     def test_dataloader(self):
-        transform = T.Compose([
-            T.ToTensor(),
-            T.Normalize(self.mean, self.std),
-        ])
-        if self.set_targets_eval_ood is not None:
-            dataset = CINIC10(root_dir=os.path.join(self.hparams.data_dir,
-                                                    "cinic-10"),
-                              split="test",
-                              transform=transform,
-                              preload=True,
-                              labels=self.set_targets_eval_ood)
-            dataset.targets = self.set_targets_eval_ood
-            assert len(dataset.data) == len(
-                dataset.targets
-            ), "number of examples, {} does not match targets {}".format(
-                len(dataset.data), len(dataset.targets))
-            assert dataset.data.shape[1] >= np.max(
-                dataset.targets
-            ), "number of classes, {} does not match target index {}".format(
-                dataset.data.shape[1], np.max(dataset.targets))
-        else:
-            dataset = CINIC10(root_dir=os.path.join(self.hparams.data_dir,
-                                                    "cinic-10"),
-                              split="test",
-                              transform=transform,
-                              preload=True)
         dataloader = DataLoader(
-            dataset,
+            self.test_dataset,
             batch_size=self.hparams.batch_size,
             num_workers=self.hparams.num_workers,
             drop_last=False,
@@ -458,10 +451,7 @@ class CIFAR10_1Data(pl.LightningDataModule):
         else:
             self.set_targets_eval_ood = None
 
-    def train_dataloader(self):
-        raise NotImplementedError
-
-    def val_dataloader(self):
+    def setup(self, stage=None):
         transform = T.Compose([
             T.ToTensor(),
             T.Normalize(self.mean, self.std),
@@ -480,8 +470,14 @@ class CIFAR10_1Data(pl.LightningDataModule):
                 dataset.targets
             ), "number of classes, {} does not match target index {}".format(
                 dataset.data.shape[1], np.max(dataset.targets))
+        self.val_dataset = dataset
+
+    def train_dataloader(self):
+        raise NotImplementedError
+
+    def val_dataloader(self):
         dataloader = DataLoader(
-            dataset,
+            self.val_dataset,
             batch_size=self.hparams.batch_size,
             num_workers=self.hparams.num_workers,
             drop_last=False,
@@ -533,6 +529,7 @@ class CIFAR10_CData(pl.LightningDataModule):
                 dataset.targets
             ), "number of classes, {} does not match target index {}".format(
                 dataset.data.shape[1], np.max(dataset.targets))
+
         dataloader = DataLoader(
             dataset,
             batch_size=self.hparams.batch_size,
@@ -553,6 +550,10 @@ class CIFAR10Data(pl.LightningDataModule):
         self.hparams = args
         self.mean = (0.4914, 0.4822, 0.4465)
         self.std = (0.2023, 0.1994, 0.2010)
+        self.valid_size = args.get("valid_size", 0)
+        self.seed = args.get("seed", None)
+
+        self.make_generator_from_seed()
 
         # if softmax targets are given, parse.
         if args.get("custom_targets_train", False):
@@ -565,6 +566,12 @@ class CIFAR10Data(pl.LightningDataModule):
             self.set_targets_eval_ind = np.load(args.custom_targets_eval_ind)
         else:
             self.set_targets_eval_ind = None
+
+    def make_generator_from_seed(self):
+        if self.seed == None:
+            self.generator_from_seed = None
+        else:
+            self.generator_from_seed = torch.Generator().manual_seed(self.seed)
 
     @staticmethod
     def download_weights():
@@ -596,40 +603,76 @@ class CIFAR10Data(pl.LightningDataModule):
             zip_ref.extractall(directory_to_extract_to)
             print("Unzip file successful!")
 
-    def get_torch_data_cls(self, train=True, aug=False):
-        if train:
-            transform = self.train_transform(aug=aug)
-            dataset = CIFAR10(root=self.hparams.data_dir,
-                                     train=True,
-                                     transform=transform,
-                                     download=True)
-        else:
-            transform = self.valid_transform()
-            dataset = CIFAR10(
-                root=self.hparams.data_dir,
-                train=False,
-                transform=transform,
-                download=True)
+    def prepare_data(self):
+        # download
+        CIFAR10(self.hparams.data_dir, train=True, download=True)
+        CIFAR10(self.hparams.data_dir, train=False, download=True)
 
-        return dataset
+    def setup(self, stage=None):
+        # Assign train/val datasets for use in dataloaders
+        train_set = CIFAR10(self.hparams.data_dir,
+                            train=True,
+                            transform=self.train_transform())
+        valid_set = CIFAR10(self.hparams.data_dir,
+                            train=True,
+                            transform=self.valid_transform())
+        test_set = CIFAR10(self.hparams.data_dir,
+                           train=False,
+                           transform=self.valid_transform())
+
+        # split train and valid set
+        assert self.valid_size < 1, "valid_size should be less than 1"
+        assert self.valid_size >= 0, "valid_size should be greater than or eq to 0"
+
+        if self.valid_size == 0:
+            self.train_dataset = train_set
+            self.val_dataset = test_set
+        else:
+            num_train = len(train_set)
+            indices = torch.randperm(num_train,
+                                     generator=self.generator_from_seed,
+                                     )
+            split = int(np.floor(self.valid_size * num_train))
+
+            self.train_indices = indices[:num_train - split]
+            self.val_indices = indices[num_train - split:]
+
+            self.train_dataset = Subset(train_set, self.train_indices)
+            self.val_dataset = Subset(valid_set, self.val_indices)
+
+        self.test_dataset = test_set
+
+        self.check_targets()
+
+    def train_noaug_dataset(self):
+        train_set = CIFAR10(self.hparams.data_dir,
+                            train=True,
+                            transform=self.valid_transform())
+        if self.valid_size == 0:
+            return train_set
+        return Subset(train_set, self.train_indices)
+
+    def check_targets(self):
+        if self.set_targets_train is not None:
+            self.train_dataset.targets = self.set_targets_train
+            assert len(self.train_dataset.data) == len(
+                self.train_dataset.targets
+            ), "number of examples, {} does not match targets {}".format(
+                len(self.train_dataset.data), len(self.train_dataset.targets))
+            assert self.train_dataset.data.shape[1] >= np.max(
+                self.train_dataset.targets
+            ), "number of classes, {} does not match target index {}".format(
+                self.train_dataset.data.shape[1], np.max(self.train_dataset.targets))
 
     def train_dataloader(self, shuffle=True, aug=True):
         """added optional shuffle parameter for generating random labels.
     added optional aug parameter to apply augmentation or not.
 
     """
-        dataset = self.get_torch_data_cls(train=True, aug=aug)
-
-        if self.set_targets_train is not None:
-            dataset.targets = self.set_targets_train
-            assert len(dataset.data) == len(
-                dataset.targets
-            ), "number of examples, {} does not match targets {}".format(
-                len(dataset.data), len(dataset.targets))
-            assert dataset.data.shape[1] >= np.max(
-                dataset.targets
-            ), "number of classes, {} does not match target index {}".format(
-                dataset.data.shape[1], np.max(dataset.targets))
+        if not aug:
+            dataset = self.train_noaug_dataset()
+        else:
+            dataset = self.train_dataset
 
         dataloader = DataLoader(
             dataset,
@@ -638,15 +681,14 @@ class CIFAR10Data(pl.LightningDataModule):
             shuffle=shuffle,
             drop_last=False,
             pin_memory=True,
+            generator=self.generator_from_seed,
         )
         return dataloader
 
     def val_dataloader(self):
 
-        dataset = self.get_torch_data_cls(train=False)
-
         dataloader = DataLoader(
-            dataset,
+            self.val_dataset,
             batch_size=self.hparams.batch_size,
             num_workers=self.hparams.num_workers,
             drop_last=False,
@@ -655,7 +697,15 @@ class CIFAR10Data(pl.LightningDataModule):
         return dataloader
 
     def test_dataloader(self):
-        return self.val_dataloader()
+
+        dataloader = DataLoader(
+            self.test_dataset,
+            batch_size=self.hparams.batch_size,
+            num_workers=self.hparams.num_workers,
+            drop_last=False,
+            pin_memory=True,
+        )
+        return dataloader
 
     def train_transform(self, aug=True):
         if aug is True:
@@ -680,119 +730,54 @@ class CIFAR10Data(pl.LightningDataModule):
         return transform
 
 
-class CIFAR100Data(pl.LightningDataModule):
+class CIFAR100Data(CIFAR10Data):
     def __init__(self, args):
-        super().__init__()
-        self.hparams = args
-        self.mean = (0.4914, 0.4822, 0.4465)
-        self.std = (0.2023, 0.1994, 0.2010)
+        super().__init__(args)
+
         # hack to debug augmentation:
-        self.train_aug = self.hparams.get('train_aug', True)
+        if self.hparams.get('train_aug', None) is not None:
+            raise ValueError("train_aug should not be set for CIFAR100")
 
-        # if softmax targets are given, parse.
-        if args.get("custom_targets_train", False):
-            # self.set_targets_train = parse_softmax(args.softmax_targets_train)
-            # training targets should be softmax! others should be binary.
-            self.set_targets_train = np.load(args.custom_targets_train)
+    def prepare_data(self):
+        # download CIFAR 100 dataset
+        CIFAR100(self.hparams.data_dir, train=True, download=True)
+        CIFAR100(self.hparams.data_dir, train=False, download=True)
+
+    def setup(self, stage=None):
+        # Assign train/val datasets for use in dataloaders
+        train_set = CIFAR100(self.hparams.data_dir, train=True, transform=self.train_transform())
+        valid_set = CIFAR100(self.hparams.data_dir, train=True, transform=self.valid_transform())
+        test_set = CIFAR100(self.hparams.data_dir, train=False, transform=self.valid_transform())
+
+        # split train and valid set
+        assert self.valid_size < 1, "valid_size should be less than 1"
+        assert self.valid_size >= 0, "valid_size should be greater than or eq to 0"
+
+        if self.valid_size == 0:
+            self.train_dataset = train_set
+            self.val_dataset = test_set
         else:
-            self.set_targets_train = None
-        if args.get("custom_targets_eval_ind", False):
-            self.set_targets_eval_ind = np.load(args.custom_targets_eval_ind)
-        else:
-            self.set_targets_eval_ind = None
+            num_train = len(train_set)
+            indices = torch.randperm(num_train,
+                                     generator=self.generator_from_seed,
+                                     )
+            split = int(np.floor(self.valid_size * num_train))
 
-    def get_torch_data_cls(self, train=True, aug=False):
-        if train:
-            transform = self.train_transform(aug=aug)
-            dataset = CIFAR100(root=self.hparams.data_dir,
-                                     train=True,
-                                     transform=transform,
-                                     download=True)
-        else:
-            transform = self.valid_transform()
-            dataset = CIFAR100(
-                root=self.hparams.data_dir,
-                train=False,
-                transform=transform,
-                download=True)
-        return dataset
+            self.train_indices = indices[:num_train - split]
+            self.val_indices = indices[num_train - split:]
 
-    def train_dataloader(self, shuffle=True, aug=True):
-        """added optional shuffle parameter for generating random labels.
-    added optional aug parameter to apply augmentation or not.
+            self.train_dataset = Subset(train_set, self.train_indices)
+            self.val_dataset = Subset(valid_set, self.val_indices)
 
-    """
-        dataset = self.get_torch_data_cls(train=True, aug=aug)
+        self.test_dataset = test_set
 
-        if self.set_targets_train is not None:
-            dataset.targets = self.set_targets_train
-            assert len(dataset.data) == len(
-                dataset.targets
-            ), "number of examples, {} does not match targets {}".format(
-                len(dataset.data), len(dataset.targets))
-            assert dataset.data.shape[1] >= np.max(
-                dataset.targets
-            ), "number of classes, {} does not match target index {}".format(
-                dataset.data.shape[1], np.max(dataset.targets))
+        self.check_targets()
 
-        dataloader = DataLoader(
-            dataset,
-            batch_size=self.hparams.batch_size,
-            num_workers=self.hparams.num_workers,
-            shuffle=shuffle,
-            drop_last=False,
-            pin_memory=True,
-        )
-        return dataloader
-
-    def val_dataloader(self):
-
-        dataset = self.get_torch_data_cls(train=False)
-
-        if self.set_targets_eval_ind is not None:
-            dataset.targets = self.set_targets_eval_ind
-            assert len(dataset.data) == len(
-                dataset.targets
-            ), "number of examples, {} does not match targets {}".format(
-                len(dataset.data), len(dataset.targets))
-            assert dataset.data.shape[1] >= np.max(
-                dataset.targets
-            ), "number of classes, {} does not match target index {}".format(
-                dataset.data.shape[1], np.max(dataset.targets))
-
-        dataloader = DataLoader(
-            dataset,
-            batch_size=self.hparams.batch_size,
-            num_workers=self.hparams.num_workers,
-            drop_last=False,
-            pin_memory=True,
-        )
-        return dataloader
-
-    def test_dataloader(self):
-        return self.val_dataloader()
-
-    def train_transform(self, aug=True):
-        if (aug is True) and (self.train_aug is True):
-            transform = T.Compose([
-                T.RandomCrop(32, padding=4),
-                T.RandomHorizontalFlip(),
-                T.ToTensor(),
-                T.Normalize(self.mean, self.std),
-            ])
-        else:
-            transform = T.Compose([
-                T.ToTensor(),
-                T.Normalize(self.mean, self.std),
-            ])
-        return transform
-
-    def valid_transform(self):
-        transform = T.Compose([
-            T.ToTensor(),
-            T.Normalize(self.mean, self.std),
-        ])
-        return transform
+    def train_noaug_dataset(self):
+        train_set = CIFAR100(self.hparams.data_dir, train=True, transform=self.valid_transform())
+        if self.valid_size == 0:
+            return train_set
+        return Subset(train_set, self.train_indices)
 
 
 class CIFAR100Coarse(CIFAR100):
@@ -847,94 +832,47 @@ class CIFAR100Coarse(CIFAR100):
         ]
 
 
-class CIFAR100CoarseData(pl.LightningDataModule):
-    # TODO: inherit from CIFAR100Data
+class CIFAR100CoarseData(CIFAR100Data):
     def __init__(self, args):
-        super().__init__()
-        self.hparams = args
-        self.mean = (0.4914, 0.4822, 0.4465)
-        self.std = (0.2023, 0.1994, 0.2010)
-        # if softmax targets are given, parse.
-        if args.get("custom_targets_train", False):
-            # self.set_targets_train = parse_softmax(args.softmax_targets_train)
-            # training targets should be softmax! others should be binary.
-            self.set_targets_train = np.load(args.custom_targets_train)
+        super().__init__(args)
+
+    def prepare_data(self):
+        # download
+        CIFAR100Coarse(self.hparams.data_dir, train=True, download=True)
+        CIFAR100Coarse(self.hparams.data_dir, train=False, download=True)
+
+    def setup(self, stage=None):
+        # Assign train/val datasets for use in dataloaders
+        train_set = CIFAR100Coarse(self.hparams.data_dir, train=True, transform=self.train_transform())
+        valid_set = CIFAR100Coarse(self.hparams.data_dir, train=True, transform=self.valid_transform())
+        test_set = CIFAR100Coarse(self.hparams.data_dir, train=False, transform=self.valid_transform())
+
+        # split train and valid set
+        assert self.valid_size < 1, "valid_size should be less than 1"
+        assert self.valid_size >= 0, "valid_size should be greater than or eq to 0"
+
+        if self.valid_size == 0:
+            self.train_dataset = train_set
+            self.val_dataset = test_set
         else:
-            self.set_targets_train = None
-        if args.get("custom_targets_eval_ind", False):
-            self.set_targets_eval_ind = np.load(args.custom_targets_eval_ind)
-        else:
-            self.set_targets_eval_ind = None
+            num_train = len(train_set)
+            indices = torch.randperm(num_train,
+                                     generator=self.generator_from_seed,
+                                     )
+            split = int(np.floor(self.valid_size * num_train))
 
-    def train_dataloader(self, shuffle=True, aug=True):
-        """added optional shuffle parameter for generating random labels.
-    added optional aug parameter to apply augmentation or not.
+            self.train_indices = indices[:num_train - split]
+            self.val_indices = indices[num_train - split:]
 
-    """
-        if aug is True:
-            transform = T.Compose([
-                T.RandomCrop(32, padding=4),
-                T.RandomHorizontalFlip(),
-                T.ToTensor(),
-                T.Normalize(self.mean, self.std),
-            ])
-        else:
-            transform = T.Compose([
-                T.ToTensor(),
-                T.Normalize(self.mean, self.std),
-            ])
-        dataset = CIFAR100Coarse(root=self.hparams.data_dir,
-                                 train=True,
-                                 transform=transform,
-                                 download=True)
-        if self.set_targets_train is not None:
-            dataset.targets = self.set_targets_train
-            assert len(dataset.data) == len(
-                dataset.targets
-            ), "number of examples, {} does not match targets {}".format(
-                len(dataset.data), len(dataset.targets))
-            assert dataset.data.shape[1] >= np.max(
-                dataset.targets
-            ), "number of classes, {} does not match target index {}".format(
-                dataset.data.shape[1], np.max(dataset.targets))
+            self.train_dataset = Subset(train_set, self.train_indices)
+            self.val_dataset = Subset(valid_set, self.val_indices)
 
-        dataloader = DataLoader(
-            dataset,
-            batch_size=self.hparams.batch_size,
-            num_workers=self.hparams.num_workers,
-            shuffle=shuffle,
-            drop_last=False,
-            pin_memory=True,
-        )
-        return dataloader
+        self.test_dataset = test_set
 
-    def val_dataloader(self):
-        transform = T.Compose([
-            T.ToTensor(),
-            T.Normalize(self.mean, self.std),
-        ])
-        dataset = CIFAR100Coarse(root=self.hparams.data_dir,
-                                 train=False,
-                                 transform=transform,
-                                 download=True)
-        if self.set_targets_eval_ind is not None:
-            dataset.targets = self.set_targets_eval_ind
-            assert len(dataset.data) == len(
-                dataset.targets
-            ), "number of examples, {} does not match targets {}".format(
-                len(dataset.data), len(dataset.targets))
-            assert dataset.data.shape[1] >= np.max(
-                dataset.targets
-            ), "number of classes, {} does not match target index {}".format(
-                dataset.data.shape[1], np.max(dataset.targets))
-        dataloader = DataLoader(
-            dataset,
-            batch_size=self.hparams.batch_size,
-            num_workers=self.hparams.num_workers,
-            drop_last=False,
-            pin_memory=True,
-        )
-        return dataloader
+        self.check_targets()
 
-    def test_dataloader(self):
-        return self.val_dataloader()
+    def train_noaug_dataset(self):
+        train_set = CIFAR100Coarse(self.hparams.data_dir, train=True, transform=self.valid_transform())
+        if self.valid_size == 0:
+            return train_set
+        return Subset(train_set, self.train_indices)

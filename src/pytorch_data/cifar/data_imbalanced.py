@@ -4,10 +4,9 @@ https://github.com/kaidic/LDAM-DRW/blob/master/imbalance_cifar.py
 """
 import numpy as np
 from .data import CIFAR10Data, CIFAR100Data
-from torchvision import transforms as T
 from torchvision.datasets import CIFAR10, CIFAR100
-from torch.utils.data import DataLoader
-import pytorch_lightning as pl
+from torch.utils.data import Subset
+import torch
 
 __all__ = ["IMBALANCECIFAR10",
            "IMBALANCECIFAR100",
@@ -29,9 +28,12 @@ class IMBALANCECIFAR10(CIFAR10):
                  train=True,
                  transform=None,
                  target_transform=None,
-                 download=False):
+                 download=False,
+                 rand_number=0):
         super(IMBALANCECIFAR10, self).__init__(root, train, transform,
                                                target_transform, download)
+        if rand_number is not None:
+            np.random.seed(rand_number)
         img_num_list = self.get_img_num_per_cls(self.cls_num, imb_type,
                                                 imb_factor)
         self.gen_imbalanced_data(img_num_list)
@@ -86,24 +88,67 @@ class IMBALANCECIFAR10Data(CIFAR10Data):
         self.imb_type = self.hparams.get('imb_type', 'exp')
         self.imb_factor = self.hparams.get('imb_factor', 0.01)
 
-    def get_torch_data_cls(self, train=True, aug=False):
-        if train:
-            transform = self.train_transform(aug=aug)
-            dataset = IMBALANCECIFAR10(root=self.hparams.data_dir,
-                               train=True,
-                               transform=transform,
-                               download=True,
-                               imb_type=self.imb_type,
-                               imb_factor=self.imb_factor
-                                       )
+    def setup(self, stage=None):
+        # Assign train/val datasets for use in dataloaders
+        train_set = IMBALANCECIFAR10(self.hparams.data_dir,
+                                     train=True,
+                                     transform=self.train_transform(),
+                                     imb_type=self.imb_type,
+                                     imb_factor=self.imb_factor,
+                                     rand_number=self.seed)
+
+        valid_set = IMBALANCECIFAR10(self.hparams.data_dir,
+                                     train=True,
+                                     transform=self.valid_transform(),
+                                     imb_type=self.imb_type,
+                                     imb_factor=self.imb_factor,
+                                     rand_number=self.seed)
+
+        test_set = CIFAR10(self.hparams.data_dir,
+                           train=False,
+                           transform=self.valid_transform())
+
+        # split train and valid set
+        assert self.valid_size < 1, "valid_size should be less than 1"
+        assert self.valid_size >= 0, "valid_size should be greater than or eq to 0"
+
+        if self.valid_size == 0:
+            self.train_dataset = train_set
+            self.val_dataset = test_set
         else:
-            transform = self.valid_transform()
-            dataset = CIFAR10(
-                root=self.hparams.data_dir,
-                train=False,
-                transform=transform,
-                download=True)
-        return dataset
+            num_train = len(train_set)
+            # TODO(): account for class imbalance in val set:
+            indices = torch.randperm(num_train,
+                                     generator=self.generator_from_seed,
+                                     )
+            split = int(np.floor(self.valid_size * num_train))
+            self.train_indices = indices[:num_train - split]
+            self.val_indices = indices[num_train - split:]
+
+            self.train_dataset = Subset(train_set, self.train_indices)
+            self.val_dataset = Subset(valid_set, self.val_indices)
+
+            raise NotImplementedError('valid size for imbalanced dataset is not implemented yet')
+
+        self.test_dataset = test_set
+
+        self.check_targets()
+
+    def train_noaug_dataset(self):
+        # get dataset without transformations
+        train_set = IMBALANCECIFAR10(self.hparams.data_dir,
+                                     train=True,
+                                     transform=self.valid_transform(),
+                                     imb_type=self.imb_type,
+                                     imb_factor=self.imb_factor,
+                                     rand_number=self.seed)
+        # use indices from original train_dataset to get images.
+        train_set.data = self.train_dataset.data
+        train_set.targets = self.train_dataset.targets
+
+        if self.valid_size == 0:
+            return train_set
+        return Subset(train_set, self.train_indices)
 
 
 class IMBALANCECIFAR100(IMBALANCECIFAR10):
@@ -137,22 +182,41 @@ class IMBALANCECIFAR100Data(CIFAR100Data):
         self.imb_factor = self.hparams.get('imb_factor',
                                            0.01)  # imbalance factor
 
-    def get_torch_data_cls(self, train=True, aug=False):
+    def setup(self, stage=None):
+        # Assign train/val datasets for use in dataloaders
+        train_set = IMBALANCECIFAR100(self.hparams.data_dir,
+                                      train=True,
+                                      transform=self.train_transform(),
+                                      imb_type=self.imb_type,
+                                      imb_factor=self.imb_factor,
+                                      rand_number=self.seed)
+        test_set = CIFAR100(self.hparams.data_dir, train=False, transform=self.valid_transform())
 
-        if train:
-            transform = self.train_transform(aug=aug)
-            dataset = IMBALANCECIFAR100(root=self.hparams.data_dir,
-                               train=True,
-                               transform=transform,
-                               download=True,
-                               imb_type=self.imb_type,
-                               imb_factor=self.imb_factor
-                                       )
+        # split train and valid set
+        assert self.valid_size < 1, "valid_size should be less than 1"
+        assert self.valid_size >= 0, "valid_size should be greater than or eq to 0"
+
+        self.train_dataset = train_set
+        if self.valid_size == 0:
+            self.val_dataset = test_set
         else:
-            transform = self.valid_transform()
-            dataset = CIFAR100(
-                root=self.hparams.data_dir,
-                train=False,
-                transform=transform,
-                download=True)
-        return dataset
+            raise NotImplementedError('valid size for imbalanced dataset is not implemented yet')
+
+        self.test_dataset = test_set
+
+        self.check_targets()
+
+    def train_noaug_dataset(self):
+        # get dataset without transformations
+        train_set = IMBALANCECIFAR100(self.hparams.data_dir,
+                                      train=True,
+                                      transform=self.valid_transform(),
+                                      imb_type=self.imb_type,
+                                      imb_factor=self.imb_factor,
+                                      rand_number=self.seed)
+        # use indices from original train_dataset to get images.
+        train_set.data = self.train_dataset.data
+        train_set.targets = self.train_dataset.targets
+        if self.valid_size == 0:
+            return train_set
+        return Subset(train_set, self.train_indices)
