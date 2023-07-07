@@ -1,6 +1,6 @@
 # Pytorch data
 
-Support multiple pytorch datasets in pytorch and pytorch lightning
+Support for pytorch datasets in pytorch and pytorch lightning
 
 ## Installation instructions:
 
@@ -10,13 +10,10 @@ Check name of existing conda environments (to not overwrite them):
 ```
 conda list
 ```
-
-Create a new environment as follows:: 
-
+Create a new environment as follows (can use 3.7+):
 ```
 conda create -n env_name python=3.7
 ```
-
 Now move into the root directory of this repo:
 ```
 cd /path/to/this/repo
@@ -29,3 +26,8 @@ conda install pip
 pip install -r requirements.txt
 pip install -e ./src
 ```
+
+
+# Datasets
+----------------
+[] Inaturalist18
