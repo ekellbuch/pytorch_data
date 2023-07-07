@@ -1,7 +1,5 @@
-## smaller datasets that aren't cifar10
 import pytorch_lightning as pl
-import requests
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 import torch
 from torchvision.transforms import ToTensor
 from torchvision.datasets import MNIST

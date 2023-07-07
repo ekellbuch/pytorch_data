@@ -6,7 +6,6 @@ import numpy as np
 from .data import CIFAR10Data, CIFAR100Data
 from torchvision.datasets import CIFAR10, CIFAR100
 from torch.utils.data import Subset
-import torch
 
 __all__ = ["IMBALANCECIFAR10",
            "IMBALANCECIFAR100",
@@ -108,29 +107,11 @@ class IMBALANCECIFAR10Data(CIFAR10Data):
                            train=False,
                            transform=self.valid_transform())
 
-        # split train and valid set
-        assert self.valid_size < 1, "valid_size should be less than 1"
-        assert self.valid_size >= 0, "valid_size should be greater than or eq to 0"
-
-        if self.valid_size == 0:
-            self.train_dataset = train_set
-            self.val_dataset = test_set
-        else:
-            num_train = len(train_set)
-            # TODO(): account for class imbalance in val set:
-            indices = torch.randperm(num_train,
-                                     generator=self.generator_from_seed,
-                                     )
-            split = int(np.floor(self.valid_size * num_train))
-            self.train_indices = indices[:num_train - split]
-            self.val_indices = indices[num_train - split:]
-
-            self.train_dataset = Subset(train_set, self.train_indices)
-            self.val_dataset = Subset(valid_set, self.val_indices)
-
+        #TODO(): account for class imbalance in val set:
+        if self.valid_size > 0:
             raise NotImplementedError('valid size for imbalanced dataset is not implemented yet')
-
-        self.test_dataset = test_set
+        else:
+            self._split_train_set(train_set, test_set, valid_set)
 
         self.check_targets()
 
@@ -179,8 +160,7 @@ class IMBALANCECIFAR100Data(CIFAR100Data):
     def __init__(self, args):
         super().__init__(args)
         self.imb_type = self.hparams.get('imb_type', 'exp')  # imbalance type
-        self.imb_factor = self.hparams.get('imb_factor',
-                                           0.01)  # imbalance factor
+        self.imb_factor = self.hparams.get('imb_factor', 0.01)  # imbalance factor
 
     def setup(self, stage=None):
         # Assign train/val datasets for use in dataloaders
@@ -190,19 +170,20 @@ class IMBALANCECIFAR100Data(CIFAR100Data):
                                       imb_type=self.imb_type,
                                       imb_factor=self.imb_factor,
                                       rand_number=self.seed)
+
+        val_set = IMBALANCECIFAR100(self.hparams.data_dir,
+                                      train=True,
+                                      transform=self.valid_transform(),
+                                      imb_type=self.imb_type,
+                                      imb_factor=self.imb_factor,
+                                      rand_number=self.seed)
+
         test_set = CIFAR100(self.hparams.data_dir, train=False, transform=self.valid_transform())
 
-        # split train and valid set
-        assert self.valid_size < 1, "valid_size should be less than 1"
-        assert self.valid_size >= 0, "valid_size should be greater than or eq to 0"
-
-        self.train_dataset = train_set
-        if self.valid_size == 0:
-            self.val_dataset = test_set
+        if self.valid_size > 0:
+            raise NotImplementedError('valid size for imbalanced dataset NA.')
         else:
-            raise NotImplementedError('valid size for imbalanced dataset is not implemented yet')
-
-        self.test_dataset = test_set
+            self._split_train_set(train_set, test_set, val_set)
 
         self.check_targets()
 

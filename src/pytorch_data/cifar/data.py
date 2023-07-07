@@ -5,7 +5,6 @@ from typing import Any
 from PIL import Image
 import numpy as np
 import pytorch_lightning as pl
-import requests
 import torch
 from torch.utils.data import DataLoader, Subset
 from torchvision import transforms as T
@@ -13,6 +12,7 @@ import torchvision
 from torchvision.datasets import CIFAR10, CIFAR100
 from tqdm import tqdm
 
+from ..utils import stream_download, BaseDataModule
 
 __all__ = [
     "CIFAR10_C",
@@ -44,22 +44,6 @@ NUM_SAMPLES_TRAIN = {
 }
 
 
-def stream_download(dataurl, download_path):
-    """helper function to monitor downloads.
-  :param dataurl: path where data is located.
-  :param download_path: local path (include filename) where we should write data.
-
-  """
-    r = requests.get(dataurl, stream=True)
-    total_size = int(r.headers.get("content-length", 0))
-    block_size = 2**20  # Mebibyte
-    t = tqdm(total=total_size, unit="MiB", unit_scale=True)
-
-    with open(download_path, "wb") as f:
-        for data in r.iter_content(block_size):
-            t.update(len(data))
-            f.write(data)
-    t.close()
 
 
 def unzip_to(source, target_directory):
@@ -543,17 +527,12 @@ class CIFAR10_CData(pl.LightningDataModule):
         return self.val_dataloader()
 
 
-class CIFAR10Data(pl.LightningDataModule):
+class CIFAR10Data(BaseDataModule):
 
     def __init__(self, args):
-        super().__init__()
-        self.hparams = args
+        super().__init__(args)
         self.mean = (0.4914, 0.4822, 0.4465)
         self.std = (0.2023, 0.1994, 0.2010)
-        self.valid_size = args.get("valid_size", 0)
-        self.seed = args.get("seed", None)
-
-        self.make_generator_from_seed()
 
         # if softmax targets are given, parse.
         if args.get("custom_targets_train", False):
@@ -567,35 +546,13 @@ class CIFAR10Data(pl.LightningDataModule):
         else:
             self.set_targets_eval_ind = None
 
-    def make_generator_from_seed(self):
-        if self.seed == None:
-            self.generator_from_seed = None
-        else:
-            self.generator_from_seed = torch.Generator().manual_seed(self.seed)
-
     @staticmethod
     def download_weights():
         url = (
             "https://rutgers.box.com/shared/static/gkw08ecs797j2et1ksmbg1w5t3idf5r5.zip"
         )
 
-        # Streaming, so we can iterate over the response.
-        r = requests.get(url, stream=True)
-
-        # Total size in Mebibyte
-        total_size = int(r.headers.get("content-length", 0))
-        block_size = 2**20  # Mebibyte
-        t = tqdm(total=total_size, unit="MiB", unit_scale=True)
-
-        with open("state_dicts.zip", "wb") as f:
-            for data in r.iter_content(block_size):
-                t.update(len(data))
-                f.write(data)
-        t.close()
-
-        if total_size != 0 and t.n != total_size:
-            raise Exception("Error, something went wrong")
-
+        stream_download(url, "state_dicts.zip")
         print("Download successful. Unzipping file...")
         path_to_zip_file = os.path.join(os.getcwd(), "state_dicts.zip")
         directory_to_extract_to = os.path.join(os.getcwd(), "cifar10_models")
@@ -620,27 +577,7 @@ class CIFAR10Data(pl.LightningDataModule):
                            train=False,
                            transform=self.valid_transform())
 
-        # split train and valid set
-        assert self.valid_size < 1, "valid_size should be less than 1"
-        assert self.valid_size >= 0, "valid_size should be greater than or eq to 0"
-
-        if self.valid_size == 0:
-            self.train_dataset = train_set
-            self.val_dataset = test_set
-        else:
-            num_train = len(train_set)
-            indices = torch.randperm(num_train,
-                                     generator=self.generator_from_seed,
-                                     )
-            split = int(np.floor(self.valid_size * num_train))
-
-            self.train_indices = indices[:num_train - split]
-            self.val_indices = indices[num_train - split:]
-
-            self.train_dataset = Subset(train_set, self.train_indices)
-            self.val_dataset = Subset(valid_set, self.val_indices)
-
-        self.test_dataset = test_set
+        self._split_train_set(train_set, test_set, valid_set)
 
         self.check_targets()
 
@@ -664,49 +601,6 @@ class CIFAR10Data(pl.LightningDataModule):
             ), "number of classes, {} does not match target index {}".format(
                 self.train_dataset.data.shape[1], np.max(self.train_dataset.targets))
 
-    def train_dataloader(self, shuffle=True, aug=True):
-        """added optional shuffle parameter for generating random labels.
-    added optional aug parameter to apply augmentation or not.
-
-    """
-        if not aug:
-            dataset = self.train_noaug_dataset()
-        else:
-            dataset = self.train_dataset
-
-        dataloader = DataLoader(
-            dataset,
-            batch_size=self.hparams.batch_size,
-            num_workers=self.hparams.num_workers,
-            shuffle=shuffle,
-            drop_last=False,
-            pin_memory=True,
-            generator=self.generator_from_seed,
-        )
-        return dataloader
-
-    def val_dataloader(self):
-
-        dataloader = DataLoader(
-            self.val_dataset,
-            batch_size=self.hparams.batch_size,
-            num_workers=self.hparams.num_workers,
-            drop_last=False,
-            pin_memory=True,
-        )
-        return dataloader
-
-    def test_dataloader(self):
-
-        dataloader = DataLoader(
-            self.test_dataset,
-            batch_size=self.hparams.batch_size,
-            num_workers=self.hparams.num_workers,
-            drop_last=False,
-            pin_memory=True,
-        )
-        return dataloader
-
     def train_transform(self, aug=True):
         if aug is True:
             transform = T.Compose([
@@ -715,12 +609,9 @@ class CIFAR10Data(pl.LightningDataModule):
                 T.ToTensor(),
                 T.Normalize(self.mean, self.std),
             ])
+            return transform
         else:
-            transform = T.Compose([
-                T.ToTensor(),
-                T.Normalize(self.mean, self.std),
-            ])
-        return transform
+            return self.valid_transform()
 
     def valid_transform(self):
         transform = T.Compose([
@@ -749,28 +640,7 @@ class CIFAR100Data(CIFAR10Data):
         valid_set = CIFAR100(self.hparams.data_dir, train=True, transform=self.valid_transform())
         test_set = CIFAR100(self.hparams.data_dir, train=False, transform=self.valid_transform())
 
-        # split train and valid set
-        assert self.valid_size < 1, "valid_size should be less than 1"
-        assert self.valid_size >= 0, "valid_size should be greater than or eq to 0"
-
-        if self.valid_size == 0:
-            self.train_dataset = train_set
-            self.val_dataset = test_set
-        else:
-            num_train = len(train_set)
-            indices = torch.randperm(num_train,
-                                     generator=self.generator_from_seed,
-                                     )
-            split = int(np.floor(self.valid_size * num_train))
-
-            self.train_indices = indices[:num_train - split]
-            self.val_indices = indices[num_train - split:]
-
-            self.train_dataset = Subset(train_set, self.train_indices)
-            self.val_dataset = Subset(valid_set, self.val_indices)
-
-        self.test_dataset = test_set
-
+        self._split_train_set(train_set, test_set, valid_set)
         self.check_targets()
 
     def train_noaug_dataset(self):
@@ -847,28 +717,7 @@ class CIFAR100CoarseData(CIFAR100Data):
         valid_set = CIFAR100Coarse(self.hparams.data_dir, train=True, transform=self.valid_transform())
         test_set = CIFAR100Coarse(self.hparams.data_dir, train=False, transform=self.valid_transform())
 
-        # split train and valid set
-        assert self.valid_size < 1, "valid_size should be less than 1"
-        assert self.valid_size >= 0, "valid_size should be greater than or eq to 0"
-
-        if self.valid_size == 0:
-            self.train_dataset = train_set
-            self.val_dataset = test_set
-        else:
-            num_train = len(train_set)
-            indices = torch.randperm(num_train,
-                                     generator=self.generator_from_seed,
-                                     )
-            split = int(np.floor(self.valid_size * num_train))
-
-            self.train_indices = indices[:num_train - split]
-            self.val_indices = indices[num_train - split:]
-
-            self.train_dataset = Subset(train_set, self.train_indices)
-            self.val_dataset = Subset(valid_set, self.val_indices)
-
-        self.test_dataset = test_set
-
+        self._split_train_set(train_set, test_set, valid_set)
         self.check_targets()
 
     def train_noaug_dataset(self):
