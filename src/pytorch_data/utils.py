@@ -5,10 +5,12 @@ import requests
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader, Subset
 
+
 def count_classes(data, num_classes=10, loader='train'):
   loaders = {
     'train': data.train_dataloader,
     'val': data.val_dataloader,
+    'test': data.test_dataloader,
   }
   labels = torch.zeros(num_classes, dtype=torch.long)
   for idx, batch in tqdm(enumerate(loaders[loader]())):
@@ -69,26 +71,26 @@ class BaseDataModule(pl.LightningDataModule):
           self.generator_from_seed = torch.Generator().manual_seed(self.seed)
 
   def _split_train_set(self, train_set, test_set, valid_set=None):
-
-    # split train and valid set
+    # Function called to split train_set into train_dataset and val_dataset
+    # valid_set is the same data as train_set wo augmentation
     assert self.valid_size < 1, "valid_size should be less than 1"
     assert self.valid_size >= 0, "valid_size should be greater than or eq to 0"
 
     if self.valid_size == 0:
-      self.train_dataset = train_set
-      self.val_dataset = test_set
+        self.train_dataset = train_set
+        self.val_dataset = test_set
     else:
-      num_train = len(train_set)
-      indices = torch.randperm(num_train,
+        num_train = len(train_set)
+        indices = torch.randperm(num_train,
                                generator=self.generator_from_seed,
                                )
-      split = int(np.floor(self.valid_size * num_train))
+        split = int(np.floor(self.valid_size * num_train))
 
-      self.train_indices = indices[:num_train - split]
-      self.val_indices = indices[num_train - split:]
+        self.train_indices = indices[:num_train - split]
+        self.val_indices = indices[num_train - split:]
 
-      self.train_dataset = Subset(train_set, self.train_indices)
-      self.val_dataset = Subset(valid_set, self.val_indices)
+        self.train_dataset = Subset(train_set, self.train_indices)
+        self.val_dataset = Subset(valid_set, self.val_indices)
 
     self.test_dataset = test_set
 

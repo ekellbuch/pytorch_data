@@ -38,7 +38,7 @@ def convert(json_file, txt_file):
 
 def prepare_data(root_dir):
   for k, v in json2txt.items():
-    print('===> Converting {} to {}'.format(k, v))
+    print('===> Converting {} to {}'.format(k, v), flush=True)
     srcfile = os.path.join(root_dir, k)
     convert(srcfile, v)
 
@@ -61,7 +61,7 @@ class iNaturalist18(ImageFolder):
           self.download(root_dir)
         os.system("tar -zxvf %s -C %s"%(tarpath + "", root_dir))
         #os.system("rm %s"%(tarpath))
-      prepare_data(root_dir)
+        prepare_data(root_dir)
 
     txt = './iNaturalist18_%s.txt'%(split)
 
