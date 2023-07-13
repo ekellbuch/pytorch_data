@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader, Subset
 
 
 def count_classes(data, num_classes=10, loader='train'):
+  " count the # classes in a dataset"
   loaders = {
     'train': data.train_dataloader,
     'val': data.val_dataloader,

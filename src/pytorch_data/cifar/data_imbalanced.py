@@ -6,6 +6,7 @@ import numpy as np
 from .data import CIFAR10Data, CIFAR100Data
 from torchvision.datasets import CIFAR10, CIFAR100
 from torch.utils.data import Subset
+import torch
 
 __all__ = ["IMBALANCECIFAR10",
            "IMBALANCECIFAR100",
@@ -58,6 +59,8 @@ class IMBALANCECIFAR10(CIFAR10):
         new_targets = []
         targets_np = np.array(self.targets, dtype=np.int64)
         classes = np.unique(targets_np)
+        # keep track of indices
+        new_indices = []
         # np.random.shuffle(classes)
         self.num_per_cls_dict = dict()
         for the_class, the_img_num in zip(classes, img_num_per_cls):
@@ -69,9 +72,11 @@ class IMBALANCECIFAR10(CIFAR10):
             new_targets.extend([
                 the_class,
             ] * the_img_num)
+            new_indices.append(selec_idx)
         new_data = np.vstack(new_data)
         self.data = new_data
         self.targets = new_targets
+        self.imbalanced_train_indices = np.concatenate(new_indices)
 
     def get_cls_num_list(self):
         cls_num_list = []
@@ -95,41 +100,48 @@ class IMBALANCECIFAR10Data(CIFAR10Data):
                                      imb_type=self.imb_type,
                                      imb_factor=self.imb_factor,
                                      rand_number=self.seed)
-
-        valid_set = IMBALANCECIFAR10(self.hparams.data_dir,
-                                     train=True,
-                                     transform=self.valid_transform(),
-                                     imb_type=self.imb_type,
-                                     imb_factor=self.imb_factor,
-                                     rand_number=self.seed)
+        # imbalanced_train_indices has the indices used for training:
+        # use the remaining indices for validation.
+        valid_set = CIFAR10(self.hparams.data_dir,
+                           train=True,
+                           transform=self.valid_transform())
 
         test_set = CIFAR10(self.hparams.data_dir,
                            train=False,
                            transform=self.valid_transform())
 
-        #TODO(): account for class imbalance in val set:
-        if self.valid_size > 0:
-            raise NotImplementedError('valid size for imbalanced dataset is not implemented yet')
+        assert self.valid_size < 1, "valid_size should be less than 1"
+        assert self.valid_size >= 0, "valid_size should be greater than or eq to 0"
+
+        if self.valid_size == 0:
+            self.train_dataset = train_set
+            self.val_dataset = test_set
         else:
-            self._split_train_set(train_set, test_set, valid_set)
+            # val set cannot be on imbalanced_train_indices
+            extra_indices = np.asarray(list(set(range(len(valid_set))) - set(train_set.imbalanced_train_indices)))
+            num_extra = len(extra_indices)
+            split = min(int(np.floor(self.valid_size * len(train_set.imbalanced_train_indices))), len(extra_indices))
+            indices = torch.randperm(num_extra,
+                                     generator=self.generator_from_seed,
+                                     )[:split]
+
+            self.imbalanced_train_indices = train_set.imbalanced_train_indices
+            self.val_indices = extra_indices[indices]
+            self.train_dataset = train_set
+            self.val_dataset = Subset(valid_set, self.val_indices)
+
+        self.test_dataset = test_set
 
         self.check_targets()
 
     def train_noaug_dataset(self):
         # get dataset without transformations
-        train_set = IMBALANCECIFAR10(self.hparams.data_dir,
-                                     train=True,
-                                     transform=self.valid_transform(),
-                                     imb_type=self.imb_type,
-                                     imb_factor=self.imb_factor,
-                                     rand_number=self.seed)
-        # use indices from original train_dataset to get images.
-        train_set.data = self.train_dataset.data
-        train_set.targets = self.train_dataset.targets
+        train_set = CIFAR10(self.hparams.data_dir,
+                            train=True,
+                            transform=self.valid_transform(),
+                            )
 
-        if self.valid_size == 0:
-            return train_set
-        return Subset(train_set, self.train_indices)
+        return Subset(train_set, self.imbalanced_train_indices)
 
 
 class IMBALANCECIFAR100(IMBALANCECIFAR10):
@@ -171,33 +183,39 @@ class IMBALANCECIFAR100Data(CIFAR100Data):
                                       imb_factor=self.imb_factor,
                                       rand_number=self.seed)
 
-        val_set = IMBALANCECIFAR100(self.hparams.data_dir,
-                                      train=True,
-                                      transform=self.valid_transform(),
-                                      imb_type=self.imb_type,
-                                      imb_factor=self.imb_factor,
-                                      rand_number=self.seed)
+        valid_set = CIFAR100(self.hparams.data_dir,
+                           train=True,
+                           transform=self.valid_transform())
+
 
         test_set = CIFAR100(self.hparams.data_dir, train=False, transform=self.valid_transform())
 
-        if self.valid_size > 0:
-            raise NotImplementedError('valid size for imbalanced dataset NA.')
+        if self.valid_size == 0:
+            self.train_dataset = train_set
+            self.val_dataset = test_set
         else:
-            self._split_train_set(train_set, test_set, val_set)
+            # val set cannot be on imbalanced_train_indices
+            extra_indices = np.asarray(list(set(range(len(valid_set))) - set(train_set.imbalanced_train_indices)))
+            num_extra = len(extra_indices)
+            split = min(int(np.floor(self.valid_size * len(train_set.imbalanced_train_indices))), len(extra_indices))
+            indices = torch.randperm(num_extra,
+                                     generator=self.generator_from_seed,
+                                     )[:split]
+
+            self.imbalanced_train_indices = train_set.imbalanced_train_indices
+            self.val_indices = extra_indices[indices]
+            self.train_dataset = train_set
+            self.val_dataset = Subset(valid_set, self.val_indices)
+
+        self.test_dataset = test_set
 
         self.check_targets()
 
     def train_noaug_dataset(self):
         # get dataset without transformations
-        train_set = IMBALANCECIFAR100(self.hparams.data_dir,
-                                      train=True,
-                                      transform=self.valid_transform(),
-                                      imb_type=self.imb_type,
-                                      imb_factor=self.imb_factor,
-                                      rand_number=self.seed)
-        # use indices from original train_dataset to get images.
-        train_set.data = self.train_dataset.data
-        train_set.targets = self.train_dataset.targets
-        if self.valid_size == 0:
-            return train_set
-        return Subset(train_set, self.train_indices)
+        train_set = CIFAR100(self.hparams.data_dir,
+                            train=True,
+                            transform=self.valid_transform(),
+                            )
+
+        return Subset(train_set, self.imbalanced_train_indices)
