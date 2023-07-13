@@ -62,7 +62,7 @@ class DatasetLoaderTest(parameterized.TestCase):
     ind_data.prepare_data()
     ind_data.setup()
     labels = count_classes(ind_data, num_classes=num_classes, loader='val').sum()
-    self.assertEqual(labels, BASELINE_VAL(dataset_name))
+    self.assertEqual(len(ind_data.val_dataset), BASELINE_VAL(dataset_name))
 
   @parameterized.named_parameters(
     ("cifar10_lt", "cifar10", IMBALANCECIFAR10Data, "exp", 0.01),
@@ -78,10 +78,10 @@ class DatasetLoaderTest(parameterized.TestCase):
     ind_data.setup()
     # train set should be imbalanced
     labels = count_classes(ind_data, num_classes=num_classes, loader='train').sum()
-    self.assertGreater(BASELINE_TRAIN(dataset_name), labels)
+    self.assertGreater(BASELINE_TRAIN(dataset_name), len(ind_data.train_dataset))
     # val set should be the same
     labels = count_classes(ind_data, num_classes=num_classes, loader='val').sum()
-    self.assertEqual(labels, BASELINE_VAL(dataset_name))
+    self.assertEqual(len(ind_data.val_dataset), BASELINE_VAL(dataset_name))
 
 
 if __name__ == '__main__':
