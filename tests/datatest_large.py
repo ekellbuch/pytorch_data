@@ -1,12 +1,12 @@
-from absl.testing import absltest
-from ml_collections import config_dict
 from pathlib import Path
-from absl.testing import parameterized
-from pytorch_data.utils import count_classes
-from pytorch_data.inaturalist18.data import iNaturalist18Data
-import os 
-import torch
 
+import torch
+from absl.testing import absltest
+from absl.testing import parameterized
+from ml_collections import config_dict
+
+from pytorch_data.inaturalist18.data import iNaturalist18Data
+from pytorch_data.utils import count_classes
 
 DATA_DIR = Path.home() / "pytorch_datasets"
 

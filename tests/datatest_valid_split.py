@@ -1,9 +1,12 @@
-from absl.testing import absltest
-from ml_collections import config_dict
 from pathlib import Path
+
+from absl.testing import absltest
 from absl.testing import parameterized
+from ml_collections import config_dict
+
 from pytorch_data.cifar.data import CIFAR10Data, CIFAR100Data
 from pytorch_data.cifar.data_imbalanced import IMBALANCECIFAR10Data, IMBALANCECIFAR100Data
+
 DATA_DIR = Path.home() / "pytorch_datasets"
 import numpy as np
 

@@ -1,7 +1,9 @@
 import os
+from typing import Callable
+
 import torchvision.transforms as transforms
 from torchvision.datasets import ImageFolder
-from typing import Callable
+
 from ..utils import BaseDataModule
 
 __all__lp = [

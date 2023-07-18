@@ -1,11 +1,14 @@
-from absl.testing import absltest
-from ml_collections import config_dict
 from pathlib import Path
+
+from absl.testing import absltest
 from absl.testing import parameterized
-from pytorch_data.utils import count_classes
+from ml_collections import config_dict
+
 from pytorch_data.cifar.data import CIFAR10Data, CIFAR100Data, CIFAR10_1Data, CINIC10_Data
-from pytorch_data.imagenet.data import TinyImagenetData
 from pytorch_data.cifar.data_imbalanced import IMBALANCECIFAR10Data, IMBALANCECIFAR100Data
+from pytorch_data.imagenet.data import TinyImagenetData
+from pytorch_data.utils import count_classes
+
 DATA_DIR = Path.home() / "pytorch_datasets"
 
 # val set: # samples per class

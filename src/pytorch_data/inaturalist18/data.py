@@ -2,14 +2,15 @@
 Edited from
 https://github.com/facebookresearch/classifier-balancing/blob/main/data/dataloader.py
 """
-import os
-from PIL import Image
-from torchvision.datasets import ImageFolder
-from torchvision import transforms as T
 import json
-from tqdm import tqdm
-from ..utils import BaseDataModule, stream_download
+import os
 
+from PIL import Image
+from torchvision import transforms as T
+from torchvision.datasets import ImageFolder
+from tqdm import tqdm
+
+from ..utils import BaseDataModule, stream_download
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
 

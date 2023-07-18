@@ -1,10 +1,10 @@
 import numpy as np
 from torch.utils.data import DataLoader
+from torch.utils.data import Subset
 from torchvision import transforms as T
 from torchvision.datasets import CIFAR100
-from .data import CIFAR100Data
-from torch.utils.data import Subset
 
+from .data import CIFAR100Data
 
 __all__lp = [
     "CIFAR100HighInfData",

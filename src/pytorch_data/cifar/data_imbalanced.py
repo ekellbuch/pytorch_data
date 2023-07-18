@@ -3,10 +3,11 @@ Adopted from
 https://github.com/kaidic/LDAM-DRW/blob/master/imbalance_cifar.py
 """
 import numpy as np
-from .data import CIFAR10Data, CIFAR100Data
-from torchvision.datasets import CIFAR10, CIFAR100
-from torch.utils.data import Subset
 import torch
+from torch.utils.data import Subset
+from torchvision.datasets import CIFAR10, CIFAR100
+
+from .data import CIFAR10Data, CIFAR100Data
 
 __all__ = ["IMBALANCECIFAR10",
            "IMBALANCECIFAR100",

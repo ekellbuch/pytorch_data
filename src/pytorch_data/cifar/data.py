@@ -2,13 +2,13 @@ import os
 import zipfile
 from typing import Any
 
-from PIL import Image
 import numpy as np
 import pytorch_lightning as pl
 import torch
+import torchvision
+from PIL import Image
 from torch.utils.data import DataLoader, Subset
 from torchvision import transforms as T
-import torchvision
 from torchvision.datasets import CIFAR10, CIFAR100
 from tqdm import tqdm
 

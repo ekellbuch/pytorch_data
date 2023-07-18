@@ -1,9 +1,9 @@
-import torch
-from tqdm import tqdm
 import numpy as np
-import requests
 import pytorch_lightning as pl
+import requests
+import torch
 from torch.utils.data import DataLoader, Subset
+from tqdm import tqdm
 
 
 def count_classes(data, num_classes=10, loader='train'):
@@ -81,14 +81,24 @@ class BaseDataModule(pl.LightningDataModule):
         self.train_dataset = train_set
         self.val_dataset = test_set
     else:
-        num_train = len(train_set)
-        indices = torch.randperm(num_train,
-                               generator=self.generator_from_seed,
-                               )
-        split = int(np.floor(self.valid_size * num_train))
+        # split train set into train and val set, keeping class proportion.
+        targets_np = np.array(train_set.targets, dtype=np.int64)
+        classes, class_count = np.unique(targets_np, return_counts=True)
+        new_train_indices = []
+        new_val_indices = []
+        for the_class, the_class_count in zip(classes, class_count):
+            idx = np.where(targets_np == the_class)[0]
+            if self.seed is not None:
+                np.random.seed(self.seed)
+                np.random.shuffle(idx)
+            split = int(np.floor((1-self.valid_size) * the_class_count))
+            train_count = idx[:split]
+            val_count = idx[split:]
+            new_train_indices.extend(train_count)
+            new_val_indices.extend(val_count)
 
-        self.train_indices = indices[:num_train - split]
-        self.val_indices = indices[num_train - split:]
+        self.train_indices = new_train_indices
+        self.val_indices = new_val_indices
 
         self.train_dataset = Subset(train_set, self.train_indices)
         self.val_dataset = Subset(valid_set, self.val_indices)

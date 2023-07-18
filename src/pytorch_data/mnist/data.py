@@ -1,8 +1,8 @@
 import pytorch_lightning as pl
-from torch.utils.data import DataLoader
 import torch
-from torchvision.transforms import ToTensor
+from torch.utils.data import DataLoader
 from torchvision.datasets import MNIST
+from torchvision.transforms import ToTensor
 
 __all__lp = [
     "MNISTModule",
