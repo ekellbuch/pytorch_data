@@ -14,7 +14,7 @@ def count_classes(data, num_classes=10, loader='train'):
     'test': data.test_dataloader,
   }
   labels = torch.zeros(num_classes, dtype=torch.long)
-  for idx, batch in tqdm(enumerate(loaders[loader]())):
+  for idx, batch in enumerate(loaders[loader]()):
     labels += torch.bincount(batch[1], minlength=num_classes)
   return labels
 
