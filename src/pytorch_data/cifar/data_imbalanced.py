@@ -6,8 +6,10 @@ import numpy as np
 import torch
 from torch.utils.data import Subset
 from torchvision.datasets import CIFAR10, CIFAR100
-
+from torchvision import transforms as T
 from .data import CIFAR10Data, CIFAR100Data
+from pytorch_data.autoaugment import CIFAR10Policy, Cutout
+
 
 __all__ = ["IMBALANCECIFAR10",
            "IMBALANCECIFAR100",
@@ -15,7 +17,9 @@ __all__ = ["IMBALANCECIFAR10",
 
 __all__lp = [
     "IMBALANCECIFAR10Data",
-    "IMBALANCECIFAR100Data"
+    "IMBALANCECIFAR100Data",
+    "IMBALANCECIFAR10DataAug",
+    "IMBALANCECIFAR100DataAug",
 ]
 
 
@@ -220,3 +224,43 @@ class IMBALANCECIFAR100Data(CIFAR100Data):
                             )
 
         return Subset(train_set, self.imbalanced_train_indices)
+
+
+class IMBALANCECIFAR10DataAug(IMBALANCECIFAR10Data):
+
+    def __init__(self, args):
+        super().__init__(args)
+
+    def train_transform(self, aug=True):
+        if aug is True:
+            transform = T.Compose([
+                T.RandomCrop(32, padding=4),
+                T.RandomHorizontalFlip(),
+                CIFAR10Policy(),    # add AutoAug
+                T.ToTensor(),
+                Cutout(n_holes=1, length=16),  # add Cutout
+                T.Normalize(self.mean, self.std),
+            ])
+            return transform
+        else:
+            return self.valid_transform()
+
+
+class IMBALANCECIFAR100DataAug(IMBALANCECIFAR100Data):
+
+    def __init__(self, args):
+        super().__init__(args)
+
+    def train_transform(self, aug=True):
+        if aug is True:
+            transform = T.Compose([
+                T.RandomCrop(32, padding=4),
+                T.RandomHorizontalFlip(),
+                CIFAR10Policy(),    # add AutoAug
+                T.ToTensor(),
+                Cutout(n_holes=1, length=16),  # add Cutout
+                T.Normalize(self.mean, self.std),
+            ])
+            return transform
+        else:
+            return self.valid_transform()
