@@ -53,7 +53,7 @@ def stream_download(dataurl, download_path):
 class BaseDataModule(pl.LightningDataModule):
   def __init__(self, args):
     super().__init__()
-    self.hparams = args
+    self.hparams.update(args)
     self.valid_size = args.get("valid_size", 0)
 
     self.seed = args.get("seed", None)

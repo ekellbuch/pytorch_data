@@ -358,7 +358,7 @@ class CINIC10_Data(pl.LightningDataModule):
 
     def __init__(self, args):
         super().__init__()
-        self.hparams = args
+        self.hparams.update(args)
         self.mean = (0.47889522, 0.47227842, 0.43047404)
         self.std = (0.24205776, 0.23828046, 0.25874835)
 
@@ -425,7 +425,7 @@ class CIFAR10_1Data(pl.LightningDataModule):
 
     def __init__(self, args):
         super().__init__()
-        self.hparams = args  # check these.
+        self.hparams.update(args)  # check these.
         self.mean = (0.4914, 0.4822, 0.4465)
         self.std = (0.2471, 0.2435, 0.2616)
         self.version = args.get("version", "v6")
@@ -482,7 +482,7 @@ class CIFAR10_CData(pl.LightningDataModule):
 
     def __init__(self, args):
         super().__init__()
-        self.hparams = args
+        self.hparams.update(args)
         self.mean = (0.4914, 0.4822, 0.4465)  # should we revise these?
         self.std = (0.2471, 0.2435, 0.2616)  #
         if args.get("custom_targets_eval_ood", False):

@@ -20,7 +20,7 @@ class OneHotTransform():
 class MNISTModule(pl.LightningDataModule):
   def __init__(self, args):
     super().__init__()
-    self.hparams = args
+    self.hparams.update(args)
     self.mnist_predict = MNIST(self.hparams.data_dir,
                                train=False, transform=ToTensor(),
                                target_transform=OneHotTransform(num_classes=10),
