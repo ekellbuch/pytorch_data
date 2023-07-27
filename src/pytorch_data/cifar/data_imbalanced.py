@@ -134,20 +134,23 @@ class IMBALANCECIFAR10Data(CIFAR10Data):
             self.val_indices = extra_indices[indices]
             self.train_dataset = train_set
             self.val_dataset = Subset(valid_set, self.val_indices)
-
         self.test_dataset = test_set
+
 
         self.check_targets()
 
     def train_noaug_dataset(self):
         # get dataset without transformations
-        train_set = CIFAR10(self.hparams.data_dir,
-                            train=True,
-                            transform=self.valid_transform(),
-                            )
+        try:
+            # compatible with some versions of lightning but not others
+            train_set = CIFAR10(self.hparams.data_dir,
+                                train=True,
+                                transform=self.valid_transform(),
+                                )
 
-        return Subset(train_set, self.imbalanced_train_indices)
-
+            return Subset(train_set, self.imbalanced_train_indices)
+        except:
+            raise NotImplementedError('No augmentation dataset not implemented for this dataset')
 
 class IMBALANCECIFAR100(IMBALANCECIFAR10):
     """`CIFAR100 <https://www.cs.toronto.edu/~kriz/cifar.html>`_ Dataset.
@@ -218,12 +221,16 @@ class IMBALANCECIFAR100Data(CIFAR100Data):
 
     def train_noaug_dataset(self):
         # get dataset without transformations
-        train_set = CIFAR100(self.hparams.data_dir,
-                            train=True,
-                            transform=self.valid_transform(),
-                            )
+        try:
+            # compatible with some versions of lightning but not others
+            train_set = CIFAR100(self.hparams.data_dir,
+                                train=True,
+                                transform=self.valid_transform(),
+                                )
 
-        return Subset(train_set, self.imbalanced_train_indices)
+            return Subset(train_set, self.imbalanced_train_indices)
+        except:
+            raise NotImplementedError('No augmentation dataset not implemented for this dataset')
 
 
 class IMBALANCECIFAR10DataAug(IMBALANCECIFAR10Data):
