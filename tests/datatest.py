@@ -5,9 +5,8 @@ from absl.testing import parameterized
 from ml_collections import config_dict
 
 from pytorch_data.cifar.data import CIFAR10Data, CIFAR100Data, CIFAR10_1Data, CINIC10_Data
-from pytorch_data.cifar.data_imbalanced import IMBALANCECIFAR10Data, IMBALANCECIFAR100Data
+from pytorch_data.cifar.data_imbalanced import IMBALANCECIFAR10Data, IMBALANCECIFAR100Data, IMBALANCECIFAR10DataAug, IMBALANCECIFAR100DataAug
 from pytorch_data.imagenet.data import TinyImagenetData
-from pytorch_data.utils import count_classes
 
 DATA_DIR = Path.home() / "pytorch_datasets"
 
@@ -59,20 +58,19 @@ class DatasetLoaderTest(parameterized.TestCase):
     ("tiny_imagenet", "tiny_imagenet", TinyImagenetData),
   )
   def test_data_loading(self, dataset_name, dataset_class):
-    num_classes = NUM_CLASSES[dataset_name]
     args = self.get_cfg()
     ind_data = dataset_class(args)
     ind_data.prepare_data()
     ind_data.setup()
-    labels = count_classes(ind_data, num_classes=num_classes, loader='val').sum()
     self.assertEqual(len(ind_data.val_dataset), BASELINE_VAL(dataset_name))
 
   @parameterized.named_parameters(
     ("cifar10_lt", "cifar10", IMBALANCECIFAR10Data, "exp", 0.01),
     ("cifar100_lt", "cifar100", IMBALANCECIFAR100Data, "exp", 0.01),
+    ("cifar10_lt_aug", "cifar10", IMBALANCECIFAR10DataAug, "exp", 0.01),
+    ("cifar100_lt_aug", "cifar100", IMBALANCECIFAR100DataAug, "exp", 0.01),
   )
   def test_imb_data_loading(self, dataset_name, dataset_class, imb_type, imb_factor):
-    num_classes = NUM_CLASSES[dataset_name]
     args = self.get_cfg()
     ind_data = dataset_class(args)
     ind_data.imb_type = imb_type
@@ -80,10 +78,8 @@ class DatasetLoaderTest(parameterized.TestCase):
     ind_data.prepare_data()
     ind_data.setup()
     # train set should be imbalanced
-    labels = count_classes(ind_data, num_classes=num_classes, loader='train').sum()
     self.assertGreater(BASELINE_TRAIN(dataset_name), len(ind_data.train_dataset))
     # val set should be the same
-    labels = count_classes(ind_data, num_classes=num_classes, loader='val').sum()
     self.assertEqual(len(ind_data.val_dataset), BASELINE_VAL(dataset_name))
 
 
