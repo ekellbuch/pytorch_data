@@ -64,7 +64,7 @@ class iNaturalist18(ImageFolder):
         #os.system("rm %s"%(tarpath))
         prepare_data(root_dir)
 
-    txt = './iNaturalist18_%s.txt'%(split)
+    txt = os.path.join(dir_path,'./iNaturalist18_%s.txt'%(split))
 
     with open(txt) as f:
       for line in f:
