@@ -5,7 +5,7 @@ from absl.testing import absltest
 from absl.testing import parameterized
 from ml_collections import config_dict
 
-from pytorch_data.inaturalist18.data import iNaturalist18Data
+from pytorch_data.inaturalist.data import iNaturalistData
 from pytorch_data.utils import count_classes
 
 DATA_DIR = Path.home() / "pytorch_datasets"
@@ -41,7 +41,7 @@ class DatasetLoaderTest(parameterized.TestCase):
     return cfg
 
   @parameterized.named_parameters(
-    ("inaturalist18", "inaturalist18", iNaturalist18Data),
+    ("inaturalist18", "inaturalist18", iNaturalistData),
     #("imagenet", "imagenet", ImageNetData),
   )
   def test_data_loading(self, dataset_name, dataset_class):
