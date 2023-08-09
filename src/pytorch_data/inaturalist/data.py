@@ -25,13 +25,13 @@ class iNaturalistData(BaseDataModule):
 
   def prepare_data(self):
       # download
-      root_dir = os.path.join(self.hparams.data_dir, "iNaturalist18")
+      root_dir = os.path.join(self.hparams.data_dir, "INaturalist21")
       INaturalist(root_dir, version="2021_train", download=True)
       INaturalist(root_dir, version="2021_valid", download=True)
 
   def setup(self, stage=None):
       # Assign train/val dataset for use in dataloaders
-      root_dir = os.path.join(self.hparams.data_dir, "iNaturalist18")
+      root_dir = os.path.join(self.hparams.data_dir, "INaturalist21")
       train_set = INaturalist(root_dir, "2021_train", transform=self.train_transform())
       valid_set = INaturalist(root_dir, "2021_train", transform=self.valid_transform())
       test_set = INaturalist(root_dir, "2021_valid", transform=self.valid_transform())
