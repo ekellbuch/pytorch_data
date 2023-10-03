@@ -106,7 +106,7 @@ class iNaturalist18Data(iNaturalistData):
   def prepare_data(self):
       # download
       root_dir = os.path.join(self.hparams.data_dir, "iNaturalist18")
-      INaturalist18(root_dir, version="2018", download=True)
+      INaturalist18(root_dir, version="2018", download=False)
 
   def setup(self, stage=None):
       # Assign train/val dataset for use in dataloaders
