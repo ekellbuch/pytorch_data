@@ -6,6 +6,7 @@ from absl.testing import parameterized
 from ml_collections import config_dict
 
 from pytorch_data.inaturalist.data import iNaturalistData
+from pytorch_data.inaturalist.data_inat18 import iNaturalist18Data
 from pytorch_data.utils import count_classes
 
 DATA_DIR = Path.home() / "pytorch_datasets"
@@ -52,6 +53,25 @@ class DatasetLoaderTest(parameterized.TestCase):
     ind_data.setup()
     labels = count_classes(ind_data, num_classes=num_classes, loader='val').sum()
     self.assertEqual(labels, BASELINE_VAL(dataset_name))
+
+  @parameterized.named_parameters(
+    ("inaturalist18_cmp", "inaturalist18"),
+    #("imagenet", "imagenet", ImageNetData),
+  )
+  def test_data_loading(self, dataset_name):
+    num_classes = NUM_CLASSES[dataset_name]
+    args = self.get_cfg()
+    ind_data = iNaturalistData(args)
+    ind_data.prepare_data()
+    ind_data.setup()
+    labels = count_classes(ind_data, num_classes=num_classes, loader='val').sum()
+
+    ind_data = iNaturalist18Data(args)
+    ind_data.prepare_data()
+    ind_data.setup()
+    labels2 = count_classes(ind_data, num_classes=num_classes, loader='val').sum()
+
+    self.assertEqual(labels, labels2)
 
 
 if __name__ == '__main__':
