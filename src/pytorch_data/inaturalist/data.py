@@ -105,12 +105,12 @@ class iNaturalist18Data(iNaturalistData):
 
   def prepare_data(self):
       # download
-      root_dir = os.path.join(self.hparams.data_dir, "iNaturalist18")
+      root_dir = os.path.join(self.hparams.data_dir, "INaturalist18")
       INaturalist18(root_dir, version="2018", download=False)
 
   def setup(self, stage=None):
       # Assign train/val dataset for use in dataloaders
-      root_dir = os.path.join(self.hparams.data_dir, "iNaturalist18")
+      root_dir = os.path.join(self.hparams.data_dir, "INaturalist18")
       train_set = INaturalist18(root_dir, "2018", transform=self.train_transform(), train=True)
       valid_set = INaturalist18(root_dir, "2018", transform=self.valid_transform(), train=True)
       test_set = INaturalist18(root_dir, "2018", transform=self.valid_transform(), train=False)

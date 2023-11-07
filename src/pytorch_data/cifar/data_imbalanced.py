@@ -19,6 +19,7 @@ __all__lp = [
     "IMBALANCECIFAR10Data",
     "IMBALANCECIFAR100Data",
     "IMBALANCECIFAR10DataAug",
+    "IMBALANCECIFAR10DataAug_v2", # adds rotation to augmentation
     "IMBALANCECIFAR100DataAug",
 ]
 
@@ -245,6 +246,26 @@ class IMBALANCECIFAR10DataAug(IMBALANCECIFAR10Data):
                 T.RandomHorizontalFlip(),
                 CIFAR10Policy(),    # add AutoAug
                 T.ToTensor(),
+                Cutout(n_holes=1, length=16),  # add Cutout
+                T.Normalize(self.mean, self.std),
+            ])
+            return transform
+        else:
+            return self.valid_transform()
+
+class IMBALANCECIFAR10DataAug_v2(IMBALANCECIFAR10Data):
+    # compared to IMBALANCECIFAR10DataAug adds rotation to augmentation.
+    def __init__(self, args):
+        super().__init__(args)
+
+    def train_transform(self, aug=True):
+        if aug is True:
+            transform = T.Compose([
+                T.RandomCrop(32, padding=4),
+                T.RandomHorizontalFlip(),
+                CIFAR10Policy(),    # add AutoAug
+                T.ToTensor(),
+                T.RandomRotation(15),
                 Cutout(n_holes=1, length=16),  # add Cutout
                 T.Normalize(self.mean, self.std),
             ])

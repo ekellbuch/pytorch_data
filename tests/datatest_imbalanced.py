@@ -5,7 +5,7 @@ from absl.testing import parameterized
 from ml_collections import config_dict
 
 from pytorch_data.cifar.data import CIFAR10Data, CIFAR100Data, CIFAR10_1Data, CINIC10_Data
-from pytorch_data.cifar.data_imbalanced import IMBALANCECIFAR10Data, IMBALANCECIFAR10DataAug
+from pytorch_data.cifar.data_imbalanced import IMBALANCECIFAR10Data, IMBALANCECIFAR10DataAug, IMBALANCECIFAR10DataAug_v2
 from pytorch_data.imagenet.data import TinyImagenetData
 from pytorch_data.utils import count_classes
 
@@ -54,6 +54,7 @@ class DatasetLoaderTest(parameterized.TestCase):
   @parameterized.named_parameters(
     ("cifar10_lt", "cifar10", IMBALANCECIFAR10Data, "exp", 0.01, 0.005),
     ("cifar10_lt_aug", "cifar10", IMBALANCECIFAR10DataAug, "exp", 0.01, 0.005),
+    ("cifar10_lt_aug_v2", "cifar10", IMBALANCECIFAR10DataAug_v2, "exp", 0.01, 0.005),
   )
   def test_imb_data_loading(self, dataset_name, dataset_class, imb_type, imb_factor1, imb_factor2):
     num_classes = NUM_CLASSES[dataset_name]
@@ -67,6 +68,7 @@ class DatasetLoaderTest(parameterized.TestCase):
     print('Finished setting up data', flush=True)
     # train set should be imbalanced
     labels1 = count_classes(ind_data, num_classes=num_classes, loader='train').sum()
+    print(imb_factor1, count_classes(ind_data, num_classes=num_classes, loader='train'))
 
     args = self.get_cfg()
     ind_data = dataset_class(args)
@@ -76,7 +78,7 @@ class DatasetLoaderTest(parameterized.TestCase):
     ind_data.setup()
     # train set should be imbalanced
     labels2 = count_classes(ind_data, num_classes=num_classes, loader='train').sum()
-
+    print(imb_factor2, count_classes(ind_data, num_classes=num_classes, loader='train'))
     self.assertGreater(labels1, labels2)
 
 
