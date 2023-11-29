@@ -1,12 +1,13 @@
+"""
+python -m unittest -k DatasetLoaderTest.test_imb_data_seeded datatest_imbalanced.py
+"""
 from pathlib import Path
-
+import numpy as np
 from absl.testing import absltest
 from absl.testing import parameterized
 from ml_collections import config_dict
 
-from pytorch_data.cifar.data import CIFAR10Data, CIFAR100Data, CIFAR10_1Data, CINIC10_Data
 from pytorch_data.cifar.data_imbalanced import IMBALANCECIFAR10Data, IMBALANCECIFAR10DataAug, IMBALANCECIFAR10DataAug_v2
-from pytorch_data.imagenet.data import TinyImagenetData
 from pytorch_data.utils import count_classes
 
 DATA_DIR = Path.home() / "pytorch_datasets"
@@ -80,6 +81,35 @@ class DatasetLoaderTest(parameterized.TestCase):
     labels2 = count_classes(ind_data, num_classes=num_classes, loader='train').sum()
     print(imb_factor2, count_classes(ind_data, num_classes=num_classes, loader='train'))
     self.assertGreater(labels1, labels2)
+
+  @parameterized.named_parameters(
+  ("cifar10_lt", "cifar10", IMBALANCECIFAR10Data, "exp", 0.01),
+  )
+  def test_imb_data_seeded(self, dataset_name, dataset_class, imb_type, imb_factor):
+    # test that changing the seed doesn't change the class fractions
+    # but it changes the samples selected per class
+    num_classes = NUM_CLASSES[dataset_name]
+    args = self.get_cfg()
+    ind_data = dataset_class(args)
+    ind_data.imb_type = imb_type
+    ind_data.imb_factor = imb_factor
+
+    seeds = [0, 1, 2, 3]
+    num_samples_p_class = np.zeros((len(seeds), num_classes))
+    samples_per_seed = []
+    for seed in seeds:
+      ind_data.seed = seed
+      ind_data.prepare_data()
+      print('Finished preparing data', flush=True)
+      ind_data.setup()
+      num_samples_p_class[seed] = np.unique(ind_data.train_dataset.targets, return_counts=True)[1]
+      samples_per_seed.append(np.sort(ind_data.train_dataset.imbalanced_train_indices))
+
+    # check that regardless of the seed, the sample number of samples per class are selected
+    assert np.alltrue([np.alltrue(num_samples_p_class[0] == num_samples_p_class[j]) for j in range(1, len(seeds))])
+
+    # check that different samples are selected given different seeds
+    assert np.alltrue([~np.alltrue(samples_per_seed[0] == samples_per_seed[j]) for j in range(1, len(seeds))])
 
 
 if __name__ == '__main__':
