@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader, Subset
 from torchvision import transforms as T
 from torchvision.datasets import CIFAR10, CIFAR100
 from tqdm import tqdm
+from pytorch_data.autoaugment import CIFAR10Policy, Cutout
 
 from ..utils import stream_download, BaseDataModule
 
@@ -23,6 +24,7 @@ __all__ = [
 
 __all__lp = [
      "CIFAR10Data",
+     "CIFAR10DatatAug_v2",  # adds cutout policy for cifar 10
      "CINIC10_Data",
      "CIFAR10_1Data",
      "CIFAR10_CData",
@@ -618,6 +620,26 @@ class CIFAR10Data(BaseDataModule):
             T.Normalize(self.mean, self.std),
         ])
         return transform
+
+class CIFAR10DatatAug_v2(CIFAR10Data):
+    # compared to CIFAR10Data adds augmentations.
+    def __init__(self, args):
+        super().__init__(args)
+
+    def train_transform(self, aug=True):
+        if aug is True:
+            transform = T.Compose([
+                T.RandomCrop(32, padding=4),
+                T.RandomHorizontalFlip(),
+                CIFAR10Policy(),    # add AutoAug
+                T.ToTensor(),
+                T.RandomRotation(15),
+                Cutout(n_holes=1, length=16),  # add Cutout
+                T.Normalize(self.mean, self.std),
+            ])
+            return transform
+        else:
+            return self.valid_transform()
 
 
 class CIFAR100Data(CIFAR10Data):
