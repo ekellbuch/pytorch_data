@@ -24,7 +24,7 @@ __all__ = [
 
 __all__lp = [
      "CIFAR10Data",
-     "CIFAR10DatatAug_v2",  # adds cutout policy for cifar 10
+     "CIFAR10DataAug2",  # adds cutout policy for cifar 10
      "CINIC10_Data",
      "CIFAR10_1Data",
      "CIFAR10_CData",
@@ -355,6 +355,171 @@ class CIFAR10_1(torchvision.datasets.vision.VisionDataset):
         return sample
 
 
+class CIFAR100Coarse(CIFAR100):
+    """CIFAR100 with coarse labels.
+  from https://github.com/ryanchankh/cifar100coarse/blob/master/cifar100coarse.py
+  """
+
+    def __init__(self,
+                 root,
+                 train=True,
+                 transform=None,
+                 target_transform=None,
+                 download=False):
+        super(CIFAR100Coarse, self).__init__(root, train, transform,
+                                             target_transform, download)
+
+        # update labels
+        coarse_labels = np.array([
+            4, 1, 14, 8, 0, 6, 7, 7, 18, 3, 3, 14, 9, 18, 7, 11, 3, 9, 7, 11,
+            6, 11, 5, 10, 7, 6, 13, 15, 3, 15, 0, 11, 1, 10, 12, 14, 16, 9, 11,
+            5, 5, 19, 8, 8, 15, 13, 14, 17, 18, 10, 16, 4, 17, 4, 2, 0, 17, 4,
+            18, 17, 10, 3, 2, 12, 12, 16, 12, 1, 9, 19, 2, 10, 0, 1, 16, 12, 9,
+            13, 15, 13, 16, 19, 2, 4, 6, 19, 5, 5, 8, 19, 18, 1, 2, 15, 6, 0,
+            17, 8, 14, 13
+        ])
+        self.targets = coarse_labels[self.targets]
+
+        # update classes
+        self.classes = [
+            ['beaver', 'dolphin', 'otter', 'seal', 'whale'],
+            ['aquarium_fish', 'flatfish', 'ray', 'shark', 'trout'],
+            ['orchid', 'poppy', 'rose', 'sunflower', 'tulip'],
+            ['bottle', 'bowl', 'can', 'cup', 'plate'],
+            ['apple', 'mushroom', 'orange', 'pear', 'sweet_pepper'],
+            ['clock', 'keyboard', 'lamp', 'telephone', 'television'],
+            ['bed', 'chair', 'couch', 'table', 'wardrobe'],
+            ['bee', 'beetle', 'butterfly', 'caterpillar', 'cockroach'],
+            ['bear', 'leopard', 'lion', 'tiger', 'wolf'],
+            ['bridge', 'castle', 'house', 'road', 'skyscraper'],
+            ['cloud', 'forest', 'mountain', 'plain', 'sea'],
+            ['camel', 'cattle', 'chimpanzee', 'elephant', 'kangaroo'],
+            ['fox', 'porcupine', 'possum', 'raccoon', 'skunk'],
+            ['crab', 'lobster', 'snail', 'spider', 'worm'],
+            ['baby', 'boy', 'girl', 'man', 'woman'],
+            ['crocodile', 'dinosaur', 'lizard', 'snake', 'turtle'],
+            ['hamster', 'mouse', 'rabbit', 'shrew', 'squirrel'],
+            [
+                'maple_tree', 'oak_tree', 'palm_tree', 'pine_tree',
+                'willow_tree'
+            ], ['bicycle', 'bus', 'motorcycle', 'pickup_truck', 'train'],
+            ['lawn_mower', 'rocket', 'streetcar', 'tank', 'tractor']
+        ]
+
+
+class CIFAR10Data(BaseDataModule):
+
+    def __init__(self, args):
+        super().__init__(args)
+        self.mean = (0.4914, 0.4822, 0.4465)
+        self.std = (0.2023, 0.1994, 0.2010)
+
+        # if softmax targets are given, parse.
+        if args.get("custom_targets_train", False):
+            # self.set_targets_train = parse_softmax(args.softmax_targets_train)
+            # training targets should be softmax! others should be binary.
+            self.set_targets_train = np.load(args.custom_targets_train)
+        else:
+            self.set_targets_train = None
+        if args.get("custom_targets_eval_ind", False):
+            self.set_targets_eval_ind = np.load(args.custom_targets_eval_ind)
+        else:
+            self.set_targets_eval_ind = None
+
+    @staticmethod
+    def download_weights():
+        url = (
+            "https://rutgers.box.com/shared/static/gkw08ecs797j2et1ksmbg1w5t3idf5r5.zip"
+        )
+
+        stream_download(url, "state_dicts.zip")
+        print("Download successful. Unzipping file...")
+        path_to_zip_file = os.path.join(os.getcwd(), "state_dicts.zip")
+        directory_to_extract_to = os.path.join(os.getcwd(), "cifar10_models")
+        with zipfile.ZipFile(path_to_zip_file, "r") as zip_ref:
+            zip_ref.extractall(directory_to_extract_to)
+            print("Unzip file successful!")
+
+    def prepare_data(self):
+        # download
+        CIFAR10(self.hparams.data_dir, train=True, download=True)
+
+    def setup(self, stage=None):
+        # Assign train/val datasets for use in dataloaders
+        train_set = CIFAR10(self.hparams.data_dir,
+                            train=True,
+                            transform=self.train_transform())
+        valid_set = CIFAR10(self.hparams.data_dir,
+                            train=True,
+                            transform=self.valid_transform())
+        test_set = CIFAR10(self.hparams.data_dir,
+                           train=False,
+                           transform=self.valid_transform())
+
+        self._split_train_set(train_set, test_set, valid_set)
+
+        self.check_targets()
+
+    def train_noaug_dataset(self):
+        train_set = CIFAR10(self.hparams.data_dir,
+                            train=True,
+                            transform=self.valid_transform())
+        if self.valid_size == 0:
+            return train_set
+        return Subset(train_set, self.train_indices)
+
+    def check_targets(self):
+        if self.set_targets_train is not None:
+            self.train_dataset.targets = self.set_targets_train
+            assert len(self.train_dataset.data) == len(
+                self.train_dataset.targets
+            ), "number of examples, {} does not match targets {}".format(
+                len(self.train_dataset.data), len(self.train_dataset.targets))
+            assert self.train_dataset.data.shape[1] >= np.max(
+                self.train_dataset.targets
+            ), "number of classes, {} does not match target index {}".format(
+                self.train_dataset.data.shape[1], np.max(self.train_dataset.targets))
+
+    def train_transform(self, aug=True):
+        if aug is True:
+            transform = T.Compose([
+                T.RandomCrop(32, padding=4),
+                T.RandomHorizontalFlip(),
+                T.ToTensor(),
+                T.Normalize(self.mean, self.std),
+            ])
+            return transform
+        else:
+            return self.valid_transform()
+
+    def valid_transform(self):
+        transform = T.Compose([
+            T.ToTensor(),
+            T.Normalize(self.mean, self.std),
+        ])
+        return transform
+
+
+class CIFAR10DataAug2(CIFAR10Data):
+    # compared to CIFAR10Data adds cifar10 augmentation policy
+    def __init__(self, args):
+        super().__init__(args)
+
+    def train_transform(self, aug=True):
+        if aug is True:
+            transform = T.Compose([
+                T.RandomCrop(32, padding=4),
+                T.RandomHorizontalFlip(),
+                CIFAR10Policy(),    # add AutoAug
+                T.ToTensor(),
+                T.RandomRotation(15),
+                Cutout(n_holes=1, length=16),  # add Cutout
+                T.Normalize(self.mean, self.std),
+            ])
+            return transform
+        else:
+            return self.valid_transform()
+
 
 class CINIC10_Data(pl.LightningDataModule):
 
@@ -529,119 +694,6 @@ class CIFAR10_CData(pl.LightningDataModule):
         return self.val_dataloader()
 
 
-class CIFAR10Data(BaseDataModule):
-
-    def __init__(self, args):
-        super().__init__(args)
-        self.mean = (0.4914, 0.4822, 0.4465)
-        self.std = (0.2023, 0.1994, 0.2010)
-
-        # if softmax targets are given, parse.
-        if args.get("custom_targets_train", False):
-            # self.set_targets_train = parse_softmax(args.softmax_targets_train)
-            # training targets should be softmax! others should be binary.
-            self.set_targets_train = np.load(args.custom_targets_train)
-        else:
-            self.set_targets_train = None
-        if args.get("custom_targets_eval_ind", False):
-            self.set_targets_eval_ind = np.load(args.custom_targets_eval_ind)
-        else:
-            self.set_targets_eval_ind = None
-
-    @staticmethod
-    def download_weights():
-        url = (
-            "https://rutgers.box.com/shared/static/gkw08ecs797j2et1ksmbg1w5t3idf5r5.zip"
-        )
-
-        stream_download(url, "state_dicts.zip")
-        print("Download successful. Unzipping file...")
-        path_to_zip_file = os.path.join(os.getcwd(), "state_dicts.zip")
-        directory_to_extract_to = os.path.join(os.getcwd(), "cifar10_models")
-        with zipfile.ZipFile(path_to_zip_file, "r") as zip_ref:
-            zip_ref.extractall(directory_to_extract_to)
-            print("Unzip file successful!")
-
-    def prepare_data(self):
-        # download
-        CIFAR10(self.hparams.data_dir, train=True, download=True)
-
-    def setup(self, stage=None):
-        # Assign train/val datasets for use in dataloaders
-        train_set = CIFAR10(self.hparams.data_dir,
-                            train=True,
-                            transform=self.train_transform())
-        valid_set = CIFAR10(self.hparams.data_dir,
-                            train=True,
-                            transform=self.valid_transform())
-        test_set = CIFAR10(self.hparams.data_dir,
-                           train=False,
-                           transform=self.valid_transform())
-
-        self._split_train_set(train_set, test_set, valid_set)
-
-        self.check_targets()
-
-    def train_noaug_dataset(self):
-        train_set = CIFAR10(self.hparams.data_dir,
-                            train=True,
-                            transform=self.valid_transform())
-        if self.valid_size == 0:
-            return train_set
-        return Subset(train_set, self.train_indices)
-
-    def check_targets(self):
-        if self.set_targets_train is not None:
-            self.train_dataset.targets = self.set_targets_train
-            assert len(self.train_dataset.data) == len(
-                self.train_dataset.targets
-            ), "number of examples, {} does not match targets {}".format(
-                len(self.train_dataset.data), len(self.train_dataset.targets))
-            assert self.train_dataset.data.shape[1] >= np.max(
-                self.train_dataset.targets
-            ), "number of classes, {} does not match target index {}".format(
-                self.train_dataset.data.shape[1], np.max(self.train_dataset.targets))
-
-    def train_transform(self, aug=True):
-        if aug is True:
-            transform = T.Compose([
-                T.RandomCrop(32, padding=4),
-                T.RandomHorizontalFlip(),
-                T.ToTensor(),
-                T.Normalize(self.mean, self.std),
-            ])
-            return transform
-        else:
-            return self.valid_transform()
-
-    def valid_transform(self):
-        transform = T.Compose([
-            T.ToTensor(),
-            T.Normalize(self.mean, self.std),
-        ])
-        return transform
-
-class CIFAR10DatatAug_v2(CIFAR10Data):
-    # compared to CIFAR10Data adds augmentations.
-    def __init__(self, args):
-        super().__init__(args)
-
-    def train_transform(self, aug=True):
-        if aug is True:
-            transform = T.Compose([
-                T.RandomCrop(32, padding=4),
-                T.RandomHorizontalFlip(),
-                CIFAR10Policy(),    # add AutoAug
-                T.ToTensor(),
-                T.RandomRotation(15),
-                Cutout(n_holes=1, length=16),  # add Cutout
-                T.Normalize(self.mean, self.std),
-            ])
-            return transform
-        else:
-            return self.valid_transform()
-
-
 class CIFAR100Data(CIFAR10Data):
     def __init__(self, args):
         super().__init__(args)
@@ -668,58 +720,6 @@ class CIFAR100Data(CIFAR10Data):
         if self.valid_size == 0:
             return train_set
         return Subset(train_set, self.train_indices)
-
-
-class CIFAR100Coarse(CIFAR100):
-    """CIFAR100 with coarse labels.
-  from https://github.com/ryanchankh/cifar100coarse/blob/master/cifar100coarse.py
-  """
-
-    def __init__(self,
-                 root,
-                 train=True,
-                 transform=None,
-                 target_transform=None,
-                 download=False):
-        super(CIFAR100Coarse, self).__init__(root, train, transform,
-                                             target_transform, download)
-
-        # update labels
-        coarse_labels = np.array([
-            4, 1, 14, 8, 0, 6, 7, 7, 18, 3, 3, 14, 9, 18, 7, 11, 3, 9, 7, 11,
-            6, 11, 5, 10, 7, 6, 13, 15, 3, 15, 0, 11, 1, 10, 12, 14, 16, 9, 11,
-            5, 5, 19, 8, 8, 15, 13, 14, 17, 18, 10, 16, 4, 17, 4, 2, 0, 17, 4,
-            18, 17, 10, 3, 2, 12, 12, 16, 12, 1, 9, 19, 2, 10, 0, 1, 16, 12, 9,
-            13, 15, 13, 16, 19, 2, 4, 6, 19, 5, 5, 8, 19, 18, 1, 2, 15, 6, 0,
-            17, 8, 14, 13
-        ])
-        self.targets = coarse_labels[self.targets]
-
-        # update classes
-        self.classes = [
-            ['beaver', 'dolphin', 'otter', 'seal', 'whale'],
-            ['aquarium_fish', 'flatfish', 'ray', 'shark', 'trout'],
-            ['orchid', 'poppy', 'rose', 'sunflower', 'tulip'],
-            ['bottle', 'bowl', 'can', 'cup', 'plate'],
-            ['apple', 'mushroom', 'orange', 'pear', 'sweet_pepper'],
-            ['clock', 'keyboard', 'lamp', 'telephone', 'television'],
-            ['bed', 'chair', 'couch', 'table', 'wardrobe'],
-            ['bee', 'beetle', 'butterfly', 'caterpillar', 'cockroach'],
-            ['bear', 'leopard', 'lion', 'tiger', 'wolf'],
-            ['bridge', 'castle', 'house', 'road', 'skyscraper'],
-            ['cloud', 'forest', 'mountain', 'plain', 'sea'],
-            ['camel', 'cattle', 'chimpanzee', 'elephant', 'kangaroo'],
-            ['fox', 'porcupine', 'possum', 'raccoon', 'skunk'],
-            ['crab', 'lobster', 'snail', 'spider', 'worm'],
-            ['baby', 'boy', 'girl', 'man', 'woman'],
-            ['crocodile', 'dinosaur', 'lizard', 'snake', 'turtle'],
-            ['hamster', 'mouse', 'rabbit', 'shrew', 'squirrel'],
-            [
-                'maple_tree', 'oak_tree', 'palm_tree', 'pine_tree',
-                'willow_tree'
-            ], ['bicycle', 'bus', 'motorcycle', 'pickup_truck', 'train'],
-            ['lawn_mower', 'rocket', 'streetcar', 'tank', 'tractor']
-        ]
 
 
 class CIFAR100CoarseData(CIFAR100Data):

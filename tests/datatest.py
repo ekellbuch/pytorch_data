@@ -8,6 +8,8 @@ from pytorch_data.cifar.data import CIFAR10Data, CIFAR100Data, CIFAR10_1Data, CI
 from pytorch_data.cifar.data_imbalanced import IMBALANCECIFAR10Data, IMBALANCECIFAR100Data, IMBALANCECIFAR10DataAug, IMBALANCECIFAR100DataAug
 from pytorch_data.imagenet.data import TinyImagenetData
 
+from pytorch_data.utils import count_classes
+
 DATA_DIR = Path.home() / "pytorch_datasets"
 
 # val set: # samples per class
@@ -62,6 +64,7 @@ class DatasetLoaderTest(parameterized.TestCase):
     ind_data = dataset_class(args)
     ind_data.prepare_data()
     ind_data.setup()
+    # if we don't include a valid_size fraction, the val set is the test set!
     self.assertEqual(len(ind_data.val_dataset), BASELINE_VAL(dataset_name))
 
   @parameterized.named_parameters(
