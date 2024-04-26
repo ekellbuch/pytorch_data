@@ -5,20 +5,21 @@ A library with pytorch datasets compatible with pytorch lightning
 Datasets
 ----------
 
-|      Dataset       | 
-|:------------------:|
-|      CIFAR-10      |
-|     CIFAR10_C      |
-|      CINIC-10      |
-|     CIFAR-10.1     |
-|     CIFAR-100      |
-|  CIFAR-100 Coarse  |
-| CIFAR-10-LongTail  |
-| CIFAR-100-LongTail |
-|      ImageNet      |
-|    iNaturalist     |
-|       MNIST        |
-|        UCI         |
+|     Dataset      | 
+|:----------------:|
+|     CIFAR10      |
+|    CIFAR10-LT    |
+|    CIFAR10_C     |
+|     CINIC-10     |
+|    CIFAR-10.1    |
+|    CIFAR-100     |
+| CIFAR-100 Coarse |
+|   CIFAR-10-LT    |
+|   CIFAR-100-LT   |
+|     ImageNet     |
+|   iNaturalist    |
+|      MNIST       |
+|       UCI        |
 
 
 ## Installation instructions:
