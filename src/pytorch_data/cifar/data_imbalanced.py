@@ -16,12 +16,74 @@ __all__ = ["IMBALANCECIFAR10",
            ]
 
 __all__lp = [
-    "IMBALANCECIFAR10Data",
-    "IMBALANCECIFAR100Data",
-    "IMBALANCECIFAR10DataAug",
-    "IMBALANCECIFAR10DataAug_v2", # adds rotation to augmentation
-    "IMBALANCECIFAR100DataAug",
+    "IMBALANCECIFAR10Data",  # cifar10-LT dataset
+    "IMBALANCECIFAR10DataAug",  # cifar10-LT with cifar10 aug policy
+    "IMBALANCECIFAR10DataAug2",  # cifar10-LT w cifar10 aug policy and rotation
+    "IMBALANCECIFAR10Data_v1",  # cifar10-LT where val set is nonzero for any class
+    "IMBALANCECIFAR10DataAug2_v1",  #
+    "IMBALANCECIFAR100Data",  # cifar100-LT dataset
+    "IMBALANCECIFAR100DataAug",  # cifar100-LT with cifar10 aug policy
+    "IMBALANCECIFAR100DataAug_v1",  # imbalanced cifar 10 dataset where val set is nonzero for any class
+
 ]
+
+
+class ValidationSetReassigner:
+    def reassign_val_set(self, train_set, valid_set):
+        # assign val dataset
+        # val set is not in imbalanced_train_indices
+        # reassign train dataset if valid_type is uniform or match
+        extra_indices = np.asarray(list(set(range(len(valid_set))) - set(train_set.imbalanced_train_indices)))
+        num_extra = len(extra_indices)
+
+        split = min(int(np.floor(self.valid_size * len(train_set.imbalanced_train_indices))), len(extra_indices))
+        if self.valid_type == 'random':
+            # choose val set by selecting samples at random
+            indices = torch.randperm(num_extra,
+                                     generator=self.generator_from_seed,
+                                     )[:split]
+
+            self.val_indices = extra_indices[indices]
+        elif self.valid_type == 'uniform':
+            # the validation set has the same number of samples in each class (if available)
+            extra_targets = np.asarray(valid_set.targets)[extra_indices]
+            extra_class, extra_count = np.unique(extra_targets, return_counts=True)
+
+            split_p_class = np.ceil(split / len(extra_class))
+            # in each class (extra_count) there should be at least split_p_class
+            assert all(extra_count >= split_p_class)
+            val_indices = []
+            for class_idx, class_id in enumerate(extra_class):
+                class_mask = extra_targets == class_id
+                class_extra_indices = extra_indices[class_mask]
+                idx_to_sample = torch.randperm(int(split_p_class), generator=self.generator_from_seed)
+                selec_idx = class_extra_indices[idx_to_sample]
+                val_indices.append(selec_idx)
+
+            val_indices = np.concatenate(val_indices)[:split].tolist()
+
+            self.val_indices = val_indices
+
+        elif self.valid_type == 'match':
+            # the validation set has the same ratio as the train set for each class (if available)
+            train_class, train_count = np.unique(train_set.targets, return_counts=True)
+            split_p_class = np.ceil(self.valid_size * train_count)
+            extra_targets = np.asarray(valid_set.targets)[extra_indices]
+            extra_class, extra_count = np.unique(extra_targets, return_counts=True)
+            # in each class (extra_count) there should be at least split_p_class
+            val_indices = []
+            for class_idx, class_id in enumerate(extra_class):
+                class_mask = extra_targets == class_id
+                class_extra_indices = extra_indices[class_mask]
+                idx_to_sample = torch.randperm(int(split_p_class[class_id]), generator=self.generator_from_seed)
+                selec_idx = class_extra_indices[idx_to_sample]
+                val_indices.append(selec_idx)
+
+            val_indices = np.concatenate(val_indices)[-split:].tolist()
+
+            self.val_indices = val_indices
+
+        self.val_dataset = Subset(valid_set, self.val_indices)
 
 
 class IMBALANCECIFAR10(CIFAR10):
@@ -35,13 +97,22 @@ class IMBALANCECIFAR10(CIFAR10):
                  transform=None,
                  target_transform=None,
                  download=False,
-                 rand_number=0):
+                 rand_number=0,
+                 valid_size=0,):
         super(IMBALANCECIFAR10, self).__init__(root, train, transform,
                                                target_transform, download)
         if rand_number is not None:
             np.random.seed(rand_number)
         img_num_list = self.get_img_num_per_cls(self.cls_num, imb_type,
                                                 imb_factor)
+
+        # if the validation size is > 0, adjust the number of samples per class
+        # so that there are no classes with 0 samples in the validation set.
+        if valid_size > 0:
+            img_max = int(len(self.data) / self.cls_num)
+            max_train_size = int(img_max - img_max * valid_size)
+            img_num_list = [p_cls_num if p_cls_num <= max_train_size else max_train_size for p_cls_num in img_num_list]
+
         self.gen_imbalanced_data(img_num_list)
 
     def get_img_num_per_cls(self, cls_num, imb_type, imb_factor):
@@ -91,68 +162,6 @@ class IMBALANCECIFAR10(CIFAR10):
         return cls_num_list
 
 
-class IMBALANCECIFAR10Data(CIFAR10Data):
-
-    def __init__(self, args):
-        super().__init__(args)
-        self.imb_type = self.hparams.get('imb_type', 'exp')
-        self.imb_factor = self.hparams.get('imb_factor', 0.01)
-
-    def setup(self, stage=None):
-        # Assign train/val datasets for use in dataloaders
-        train_set = IMBALANCECIFAR10(self.hparams.data_dir,
-                                     train=True,
-                                     transform=self.train_transform(),
-                                     imb_type=self.imb_type,
-                                     imb_factor=self.imb_factor,
-                                     rand_number=self.seed)
-        # imbalanced_train_indices has the indices used for training:
-        # use the remaining indices for validation.
-        valid_set = CIFAR10(self.hparams.data_dir,
-                           train=True,
-                           transform=self.valid_transform())
-
-        test_set = CIFAR10(self.hparams.data_dir,
-                           train=False,
-                           transform=self.valid_transform())
-
-        assert self.valid_size < 1, "valid_size should be less than 1"
-        assert self.valid_size >= 0, "valid_size should be greater than or eq to 0"
-
-        if self.valid_size == 0:
-            self.train_dataset = train_set
-            self.val_dataset = test_set
-        else:
-            # val set cannot be on imbalanced_train_indices
-            extra_indices = np.asarray(list(set(range(len(valid_set))) - set(train_set.imbalanced_train_indices)))
-            num_extra = len(extra_indices)
-            split = min(int(np.floor(self.valid_size * len(train_set.imbalanced_train_indices))), len(extra_indices))
-            indices = torch.randperm(num_extra,
-                                     generator=self.generator_from_seed,
-                                     )[:split]
-
-            self.imbalanced_train_indices = train_set.imbalanced_train_indices
-            self.val_indices = extra_indices[indices]
-            self.train_dataset = train_set
-            self.val_dataset = Subset(valid_set, self.val_indices)
-        self.test_dataset = test_set
-
-
-        self.check_targets()
-
-    def train_noaug_dataset(self):
-        # get dataset without transformations
-        try:
-            # compatible with some versions of lightning but not others
-            train_set = CIFAR10(self.hparams.data_dir,
-                                train=True,
-                                transform=self.valid_transform(),
-                                )
-
-            return Subset(train_set, self.imbalanced_train_indices)
-        except:
-            raise NotImplementedError('No augmentation dataset not implemented for this dataset')
-
 class IMBALANCECIFAR100(IMBALANCECIFAR10):
     """`CIFAR100 <https://www.cs.toronto.edu/~kriz/cifar.html>`_ Dataset.
     This is a subclass of the `CIFAR10` Dataset.
@@ -177,45 +186,42 @@ class IMBALANCECIFAR100(IMBALANCECIFAR10):
     }
 
 
-class IMBALANCECIFAR100Data(CIFAR100Data):
+
+class IMBALANCECIFAR10Data(CIFAR10Data,ValidationSetReassigner):
+
     def __init__(self, args):
         super().__init__(args)
-        self.imb_type = self.hparams.get('imb_type', 'exp')  # imbalance type
-        self.imb_factor = self.hparams.get('imb_factor', 0.01)  # imbalance factor
+        self.imb_type = self.hparams.get('imb_type', 'exp')
+        self.imb_factor = self.hparams.get('imb_factor', 0.01)
+        self.valid_type = self.hparams.get('valid_type', 'random')
 
     def setup(self, stage=None):
         # Assign train/val datasets for use in dataloaders
-        train_set = IMBALANCECIFAR100(self.hparams.data_dir,
-                                      train=True,
-                                      transform=self.train_transform(),
-                                      imb_type=self.imb_type,
-                                      imb_factor=self.imb_factor,
-                                      rand_number=self.seed)
-
-        valid_set = CIFAR100(self.hparams.data_dir,
+        train_set = IMBALANCECIFAR10(self.hparams.data_dir,
+                                     train=True,
+                                     transform=self.train_transform(),
+                                     imb_type=self.imb_type,
+                                     imb_factor=self.imb_factor,
+                                     rand_number=self.seed)
+        # imbalanced_train_indices has the indices used for training:
+        # use the remaining indices for validation.
+        valid_set = CIFAR10(self.hparams.data_dir,
                            train=True,
                            transform=self.valid_transform())
 
+        test_set = CIFAR10(self.hparams.data_dir,
+                           train=False,
+                           transform=self.valid_transform())
 
-        test_set = CIFAR100(self.hparams.data_dir, train=False, transform=self.valid_transform())
+        assert self.valid_size < 1, "valid_size should be less than 1"
+        assert self.valid_size >= 0, "valid_size should be greater than or eq to 0"
 
+        self.train_dataset = train_set
         if self.valid_size == 0:
-            self.train_dataset = train_set
             self.val_dataset = test_set
         else:
-            # val set cannot be on imbalanced_train_indices
-            extra_indices = np.asarray(list(set(range(len(valid_set))) - set(train_set.imbalanced_train_indices)))
-            num_extra = len(extra_indices)
-            split = min(int(np.floor(self.valid_size * len(train_set.imbalanced_train_indices))), len(extra_indices))
-            indices = torch.randperm(num_extra,
-                                     generator=self.generator_from_seed,
-                                     )[:split]
-
             self.imbalanced_train_indices = train_set.imbalanced_train_indices
-            self.val_indices = extra_indices[indices]
-            self.train_dataset = train_set
-            self.val_dataset = Subset(valid_set, self.val_indices)
-
+            self.reassign_val_set(train_set, valid_set)
         self.test_dataset = test_set
 
         self.check_targets()
@@ -224,7 +230,7 @@ class IMBALANCECIFAR100Data(CIFAR100Data):
         # get dataset without transformations
         try:
             # compatible with some versions of lightning but not others
-            train_set = CIFAR100(self.hparams.data_dir,
+            train_set = CIFAR10(self.hparams.data_dir,
                                 train=True,
                                 transform=self.valid_transform(),
                                 )
@@ -233,9 +239,10 @@ class IMBALANCECIFAR100Data(CIFAR100Data):
         except:
             raise NotImplementedError('No augmentation dataset not implemented for this dataset')
 
-
 class IMBALANCECIFAR10DataAug(IMBALANCECIFAR10Data):
-
+    """
+    Compared to IMBALANCECIFAR10Data we use the CIFAR10Policy for augmentation.
+    """
     def __init__(self, args):
         super().__init__(args)
 
@@ -253,8 +260,12 @@ class IMBALANCECIFAR10DataAug(IMBALANCECIFAR10Data):
         else:
             return self.valid_transform()
 
-class IMBALANCECIFAR10DataAug_v2(IMBALANCECIFAR10Data):
-    # compared to IMBALANCECIFAR10DataAug adds rotation to augmentation.
+
+class IMBALANCECIFAR10DataAug2(IMBALANCECIFAR10Data):
+    """
+    Compared to IMBALANCECIFAR10Data we use the CIFAR10Policy for augmentation
+    including a rotation augmentation
+    """
     def __init__(self, args):
         super().__init__(args)
 
@@ -274,6 +285,122 @@ class IMBALANCECIFAR10DataAug_v2(IMBALANCECIFAR10Data):
             return self.valid_transform()
 
 
+class IMBALANCECIFAR10Data_v1(IMBALANCECIFAR10Data):
+    """
+    Compared to IMBALANCECIFAR10Data we include 2 changes:
+    # (1) include valid_size in the data constructor:
+    #   this partitions the train data into train and val set
+        where we leave some samples available in the top classes for the validation set.
+    # (2) make validation set uniform across classes, i.e. balanced.
+    """
+    def __init__(self, args):
+        super().__init__(args)
+        self.valid_type = self.hparams.get('valid_type', 'uniform')
+
+    def setup(self, stage=None):
+        # Assign train/val datasets for use in dataloaders
+        train_set = IMBALANCECIFAR10(self.hparams.data_dir,
+                                     train=True,
+                                     transform=self.train_transform(),
+                                     imb_type=self.imb_type,
+                                     imb_factor=self.imb_factor,
+                                     rand_number=self.seed,
+                                     valid_size=self.valid_size)
+        # imbalanced_train_indices has the indices used for training:
+        # use the remaining indices for validation.
+        valid_set = CIFAR10(self.hparams.data_dir,
+                           train=True,
+                           transform=self.valid_transform())
+
+        test_set = CIFAR10(self.hparams.data_dir,
+                           train=False,
+                           transform=self.valid_transform())
+
+        assert self.valid_size < 1, "valid_size should be less than 1"
+        assert self.valid_size >= 0, "valid_size should be greater than or eq to 0"
+
+        self.train_dataset = train_set
+        if self.valid_size == 0:
+            self.val_dataset = test_set
+        else:
+            self.imbalanced_train_indices = train_set.imbalanced_train_indices
+            self.reassign_val_set(train_set, valid_set)
+        self.test_dataset = test_set
+
+        self.check_targets()
+
+
+class IMBALANCECIFAR10DataAug2_v1(IMBALANCECIFAR10Data_v1):
+    # compared to IMBALANCECIFAR10Data_v1 adds rotation to augmentation.
+    def __init__(self, args):
+        super().__init__(args)
+
+    def train_transform(self, aug=True):
+        if aug is True:
+            transform = T.Compose([
+                T.RandomCrop(32, padding=4),
+                T.RandomHorizontalFlip(),
+                CIFAR10Policy(),  # add AutoAug
+                T.ToTensor(),
+                T.RandomRotation(15),
+                Cutout(n_holes=1, length=16),  # add Cutout
+                T.Normalize(self.mean, self.std),
+            ])
+            return transform
+        else:
+            return self.valid_transform()
+
+
+class IMBALANCECIFAR100Data(CIFAR100Data,ValidationSetReassigner):
+    def __init__(self, args):
+        super().__init__(args)
+        self.imb_type = self.hparams.get('imb_type', 'exp')  # imbalance type
+        self.imb_factor = self.hparams.get('imb_factor', 0.01)  # imbalance factor
+        self.valid_type = self.hparams.get('valid_type', 'random')
+
+    def setup(self, stage=None):
+        # Assign train/val datasets for use in dataloaders
+        train_set = IMBALANCECIFAR100(self.hparams.data_dir,
+                                      train=True,
+                                      transform=self.train_transform(),
+                                      imb_type=self.imb_type,
+                                      imb_factor=self.imb_factor,
+                                      rand_number=self.seed)
+
+        valid_set = CIFAR100(self.hparams.data_dir,
+                           train=True,
+                           transform=self.valid_transform())
+
+
+        test_set = CIFAR100(self.hparams.data_dir, train=False, transform=self.valid_transform())
+
+        assert self.valid_size < 1, "valid_size should be less than 1"
+        assert self.valid_size >= 0, "valid_size should be greater than or eq to 0"
+
+        self.train_dataset = train_set
+        if self.valid_size == 0:
+            self.val_dataset = test_set
+        else:
+            self.imbalanced_train_indices = train_set.imbalanced_train_indices
+            self.reassign_val_set(train_set, valid_set)
+        self.test_dataset = test_set
+
+        self.check_targets()
+
+    def train_noaug_dataset(self):
+        # get dataset without transformations
+        try:
+            # compatible with some versions of lightning but not others
+            train_set = CIFAR100(self.hparams.data_dir,
+                                train=True,
+                                transform=self.valid_transform(),
+                                )
+
+            return Subset(train_set, self.imbalanced_train_indices)
+        except:
+            raise NotImplementedError('No augmentation dataset not implemented for this dataset')
+
+
 class IMBALANCECIFAR100DataAug(IMBALANCECIFAR100Data):
 
     def __init__(self, args):
@@ -285,6 +412,66 @@ class IMBALANCECIFAR100DataAug(IMBALANCECIFAR100Data):
                 T.RandomCrop(32, padding=4),
                 T.RandomHorizontalFlip(),
                 CIFAR10Policy(),    # add AutoAug
+                T.ToTensor(),
+                Cutout(n_holes=1, length=16),  # add Cutout
+                T.Normalize(self.mean, self.std),
+            ])
+            return transform
+        else:
+            return self.valid_transform()
+
+
+class IMBALANCECIFAR100Data_v1(IMBALANCECIFAR100Data):
+    """
+    same changes as IMBALANCECIFAR10Data_v1
+    """
+    def __init__(self, args):
+        super().__init__(args)
+        self.valid_type = self.hparams.get('valid_type', 'uniform')
+
+    def setup(self, stage=None):
+        # Assign train/val datasets for use in dataloaders
+        train_set = IMBALANCECIFAR100(self.hparams.data_dir,
+                                     train=True,
+                                     transform=self.train_transform(),
+                                     imb_type=self.imb_type,
+                                     imb_factor=self.imb_factor,
+                                     rand_number=self.seed,
+                                     valid_size=self.valid_size)
+        # imbalanced_train_indices has the indices used for training:
+        # use the remaining indices for validation.
+        valid_set = CIFAR100(self.hparams.data_dir,
+                           train=True,
+                           transform=self.valid_transform())
+
+        test_set = CIFAR100(self.hparams.data_dir,
+                           train=False,
+                           transform=self.valid_transform())
+
+        assert self.valid_size < 1, "valid_size should be less than 1"
+        assert self.valid_size >= 0, "valid_size should be greater than or eq to 0"
+
+        self.train_dataset = train_set
+        if self.valid_size == 0:
+            self.val_dataset = test_set
+        else:
+            self.imbalanced_train_indices = train_set.imbalanced_train_indices
+            self.reassign_val_set(train_set, valid_set)
+        self.test_dataset = test_set
+
+        self.check_targets()
+
+class IMBALANCECIFAR100DataAug_v1(IMBALANCECIFAR100Data_v1):
+    # compared to IMBALANCECIFAR100Data_v1 adds cifar10 augmentation policy.
+    def __init__(self, args):
+        super().__init__(args)
+
+    def train_transform(self, aug=True):
+        if aug is True:
+            transform = T.Compose([
+                T.RandomCrop(32, padding=4),
+                T.RandomHorizontalFlip(),
+                CIFAR10Policy(),  # add AutoAug
                 T.ToTensor(),
                 Cutout(n_holes=1, length=16),  # add Cutout
                 T.Normalize(self.mean, self.std),
