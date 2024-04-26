@@ -57,6 +57,7 @@ class BaseDataModule(pl.LightningDataModule):
     self.valid_size = args.get("valid_size", 0)
 
     self.seed = args.get("seed", None)
+    self.seed_batch = args.get("seed_batch", None)
     self._make_generator_from_seed()
 
     # parameters fed to dataloader
@@ -70,7 +71,10 @@ class BaseDataModule(pl.LightningDataModule):
           self.generator_from_seed = None
       else:
           self.generator_from_seed = torch.Generator().manual_seed(self.seed)
-
+      if self.seed_batch == None:
+        self.generator_from_seed_batch = self.generator_from_seed
+      else:
+        self.generator_from_seed_batch = torch.Generator().manual_seed(self.seed_batch)
   def _split_train_set(self, train_set, test_set, valid_set=None):
     # Function called to split train_set into train_dataset and val_dataset
     # valid_set is the same data as train_set wo augmentation
@@ -118,7 +122,7 @@ class BaseDataModule(pl.LightningDataModule):
           shuffle=shuffle,
           drop_last=self.drop_last,
           pin_memory=self.pin_memory,
-          generator=self.generator_from_seed,
+          generator=self.generator_from_seed_batch,
       )
       return dataloader
 
